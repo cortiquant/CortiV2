@@ -1,0 +1,10 @@
+{
+  "description": "Create and customize interactive designs effortlessly with intuitive tools that streamline your creative workflow and enhance project collaboration.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

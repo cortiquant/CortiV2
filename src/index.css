@@ -1,0 +1,402 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+@import 'tailwindcss';
+
+@theme {
+  --color-midnight: #08091F;
+  --color-deep-navy: #0D0E2B;
+  --color-surface: #131438;
+  --color-elevated: #191A42;
+  --color-purple-primary: #7E4CC7;
+  --color-purple-core: #9B5DE5;
+  --color-lavender-bright: #B77AF2;
+  --color-lavender-soft: #C99BEF;
+  --color-lavender-pale: #E5D4F8;
+  --color-warm-white: #F7F4F8;
+  --color-text-secondary: #D7D1DF;
+  --color-text-muted: #A8A1B5;
+  --color-border-p: #2A2750;
+  --color-border-s: #39315C;
+  --color-c-success: #4A9E7A;
+  --color-c-warning: #C98850;
+  --color-c-critical: #B86B64;
+  --color-c-info: #6B82C4;
+
+  --font-display: 'DM Serif Display', Georgia, serif;
+  --font-sans: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #08091F;
+  color: #F7F4F8;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  scrollbar-width: none;
+}
+*::-webkit-scrollbar {
+  display: none;
+}
+
+@keyframes breathe {
+  0%, 100% { transform: scale(1); opacity: 0.5; }
+  50% { transform: scale(1.18); opacity: 0.85; }
+}
+
+@keyframes breathe-ring {
+  0%, 100% { transform: scale(1); opacity: 0.3; }
+  50% { transform: scale(1.3); opacity: 0.1; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -600px 0; }
+  100% { background-position: 600px 0; }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.animate-breathe { animation: breathe 4.5s ease-in-out infinite; }
+.animate-breathe-ring { animation: breathe-ring 4.5s ease-in-out infinite; }
+.animate-float { animation: float 6s ease-in-out infinite; }
+.animate-fade-up { animation: fadeUp 0.45s ease-out forwards; }
+.animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+.animate-shimmer {
+  background: linear-gradient(90deg, #191A42 25%, #2A2750 50%, #191A42 75%);
+  background-size: 600px 100%;
+  animation: shimmer 1.8s infinite;
+}
+.animate-pulse-dot { animation: pulse-dot 1.5s ease-in-out infinite; }
+.animate-gradient {
+  background-size: 200% 200%;
+  animation: gradient-shift 8s ease infinite;
+}
+
+.font-display { font-family: var(--font-display); }
+.font-mono-data { font-family: var(--font-mono); }
+
+.glow-purple {
+  box-shadow: 0 0 48px rgba(155, 93, 229, 0.18), 0 0 96px rgba(155, 93, 229, 0.08);
+}
+
+.glow-subtle {
+  box-shadow: 0 0 32px rgba(155, 93, 229, 0.12);
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, #B77AF2 0%, #9B5DE5 50%, #7E4CC7 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.border-gradient {
+  border-image: linear-gradient(135deg, #2A2750, #39315C) 1;
+}
+
+.card-base {
+  background: #131438;
+  border: 1px solid #2A2750;
+  border-radius: 16px;
+}
+
+.card-elevated {
+  background: #191A42;
+  border: 1px solid #2A2750;
+  border-radius: 16px;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #7E4CC7 0%, #9B5DE5 100%);
+  color: #F7F4F8;
+  border-radius: 12px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(155, 93, 229, 0.3);
+}
+
+.btn-ghost {
+  background: transparent;
+  border: 1px solid #2A2750;
+  color: #D7D1DF;
+  border-radius: 12px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.btn-ghost:hover {
+  border-color: #39315C;
+  color: #F7F4F8;
+  background: rgba(42, 39, 80, 0.4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-breathe,
+  .animate-breathe-ring,
+  .animate-float,
+  .animate-gradient,
+  .animate-shimmer {
+    animation: none;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   EXECUTIVE A4 PRINT STYLES FOR CORTIQUANT HR REPORTS
+   ───────────────────────────────────────────────────────────────────────────── */
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 14mm 14mm 16mm 14mm;
+  }
+
+  /* Force light background and clean typography for printing */
+  html,
+  body {
+    background: #FFFFFF !important;
+    color: #1A1A2E !important;
+    font-size: 10pt !important;
+    line-height: 1.4 !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide screen dashboard wrapper, sidebar, and non-printable elements */
+  .no-print,
+  nav,
+  aside,
+  header:not(.print-header),
+  button,
+  .modal-backdrop-screen {
+    display: none !important;
+  }
+
+  /* Hide everything outside the active printable report container */
+  body > *:not(#root) {
+    display: none !important;
+  }
+
+  /* Flatten all flex/fixed wrappers so printing flows smoothly across pages */
+  #root,
+  .hr-app-root,
+  .hr-content-area {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Report container specifically formatted for A4 document print */
+  .report-print-container {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #FFFFFF !important;
+    color: #1A1A2E !important;
+    border: none !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+  }
+
+  /* Page breaks and section containment */
+  .print-page-break {
+    page-break-before: always !important;
+    break-before: page !important;
+  }
+
+  .print-card,
+  .card-base,
+  .card-elevated {
+    background: #FAFAFC !important;
+    border: 1px solid #E2E0EC !important;
+    border-radius: 8px !important;
+    color: #1A1A2E !important;
+    box-shadow: none !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    margin-bottom: 14px !important;
+    padding: 12px 14px !important;
+  }
+
+  /* Text colors for crisp legibility */
+  .text-warm-white {
+    color: #111827 !important;
+  }
+
+  .text-text-secondary {
+    color: #374151 !important;
+  }
+
+  .text-text-muted {
+    color: #6B7280 !important;
+  }
+
+  .text-lavender-soft,
+  .text-lavender-bright,
+  .text-purple-core {
+    color: #6B21A8 !important;
+  }
+
+  .bg-purple-core\/10,
+  .bg-purple-core\/5 {
+    background: #F3E8FF !important;
+  }
+
+  .border-purple-core\/20,
+  .border-purple-core\/30 {
+    border-color: #D8B4FE !important;
+  }
+
+  .bg-c-info\/5 {
+    background: #EFF6FF !important;
+  }
+
+  .border-c-info\/30 {
+    border-color: #BFDBFE !important;
+  }
+
+  .text-c-info {
+    color: #1D4ED8 !important;
+  }
+
+  .text-c-success {
+    color: #047857 !important;
+  }
+
+  .text-c-warning {
+    color: #B45309 !important;
+  }
+
+  .text-c-error {
+    color: #B91C1C !important;
+  }
+
+  /* Table styling for print */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 8.5pt !important;
+  }
+
+  thead {
+    display: table-header-group !important;
+    background: #F3F4F6 !important;
+  }
+
+  th {
+    color: #4B5563 !important;
+    border-bottom: 1.5px solid #D1D5DB !important;
+    padding: 6px 8px !important;
+    font-weight: 600 !important;
+  }
+
+  td {
+    border-bottom: 1px solid #E5E7EB !important;
+    padding: 6px 8px !important;
+    color: #1F2937 !important;
+  }
+
+  tr {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* Typography size constraints for A4 */
+  h1, .print-title {
+    font-size: 18pt !important;
+    line-height: 1.2 !important;
+    color: #111827 !important;
+    margin-bottom: 4px !important;
+  }
+
+  h2 {
+    font-size: 14pt !important;
+    line-height: 1.25 !important;
+    color: #111827 !important;
+  }
+
+  h3, .print-section-title {
+    font-size: 10.5pt !important;
+    color: #4B1E8A !important;
+    font-weight: 700 !important;
+    margin-bottom: 6px !important;
+  }
+
+  p, span, li {
+    font-size: 8.5pt !important;
+    line-height: 1.35 !important;
+  }
+
+  /* Custom Print Header and Footer */
+  .print-header {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    padding-bottom: 10px !important;
+    border-bottom: 2px solid #7E4CC7 !important;
+    margin-bottom: 14px !important;
+  }
+
+  .print-footer {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    padding-top: 8px !important;
+    border-top: 1px solid #E5E7EB !important;
+    margin-top: 14px !important;
+    font-size: 7.5pt !important;
+    color: #9CA3AF !important;
+  }
+}
+
