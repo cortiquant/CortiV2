@@ -246,7 +246,27 @@ router.post("/employee/signup", async (req, res) => {
   } catch (err) {
     console.error("[AUTH] Employee signup error:", err.message)
     if (err.code === 11000) {
-      return res.status(409).json({ success: false, message: "Username already taken." })
+      const keyPattern = err.keyPattern || {}
+      const keyValue = err.keyValue || {}
+
+      if (keyPattern.username || keyValue.username !== undefined || (err.message && err.message.includes("username"))) {
+        return res.status(409).json({
+          success: false,
+          message: "Username already taken.",
+        })
+      }
+
+      if (keyPattern.employeeId || keyValue.employeeId !== undefined || (err.message && err.message.includes("employeeId"))) {
+        return res.status(409).json({
+          success: false,
+          message: "Employee ID conflict. Please try again.",
+        })
+      }
+
+      return res.status(409).json({
+        success: false,
+        message: "Duplicate resource conflict. Please try again.",
+      })
     }
     res.status(500).json({ success: false, message: "Server error during signup." })
   }

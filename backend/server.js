@@ -88,6 +88,7 @@ app.use("/api/auth", authLimiter)
 // Routes
 // ─────────────────────────────────────────────────────────────────────────────
 app.use("/api/auth",        authRoutes)
+app.use("/api/hr/reports",  reportsRoutes)
 app.use("/api/hr",          hrOverviewRoutes)
 app.use("/api/hr",          authRoutes)
 app.use("/api/onboarding",  onboardingRoutes)
