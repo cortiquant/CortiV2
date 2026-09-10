@@ -1724,13 +1724,45 @@ router.get("/listeners", requireAdmin, async (req, res) => {
       ListenerInvitation.find({ status: { $in: ["Pending", "Revoked", "Expired"] } }).sort({ createdAt: -1 }),
     ])
 
+    // Fetch all listener sessions to compute performance per listener
+    const ListenerSession = require("../models/ListenerSession")
+    const allSessions = await ListenerSession.find({})
+    const sessionsByListener = new Map()
+
+    allSessions.forEach((s) => {
+      const lid = s.listenerId ? s.listenerId.toString() : null
+      if (!lid) return
+      if (!sessionsByListener.has(lid)) {
+        sessionsByListener.set(lid, [])
+      }
+      sessionsByListener.get(lid).push(s)
+    })
+
     // Build unified list for Admin UI
     const result = []
 
     // 1. Existing Listener accounts
     listeners.forEach((l) => {
+      const lidStr = l._id.toString()
+      const lSessions = sessionsByListener.get(lidStr) || []
+      let completedCount = 0
+      let notCompletedCount = 0
+
+      lSessions.forEach((s) => {
+        const st = String(s.status).toLowerCase()
+        if (st === "completed") {
+          completedCount++
+        } else if (["cancelled", "declined", "expired", "no show", "no_show", "skipped"].includes(st)) {
+          notCompletedCount++
+        }
+      })
+
+      const totalTracked = completedCount + notCompletedCount
+      const completionRate = totalTracked > 0 ? Math.round((completedCount / totalTracked) * 100) : 100
+
       result.push({
         id: l._id.toString(),
+        _id: l._id.toString(),
         listenerId: l.listenerId,
         name: l.name,
         email: l.email,
@@ -1740,6 +1772,12 @@ router.get("/listeners", requireAdmin, async (req, res) => {
         lastLoginAt: l.lastLoginAt,
         createdAt: l.createdAt,
         type: "account",
+        performance: {
+          totalSessions: lSessions.length,
+          completedSessions: completedCount,
+          notCompletedSessions: notCompletedCount,
+          completionRate,
+        },
       })
     })
 
@@ -2137,5 +2175,167 @@ router.delete("/listeners/:id", requireAdmin, async (req, res) => {
   }
 })
 
-module.exports = router
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/admin/listeners/:id/sessions
+//
+// Admin/Founder-protected — returns complete session history for a listener
+// with filter support (?filter=completed|not_completed|all)
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/listeners/:id/sessions", requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params
+    const { filter } = req.query
+    const ListenerSession = require("../models/ListenerSession")
 
+    let listenerDoc = null
+    if (mongoose.isValidObjectId(id)) {
+      listenerDoc = await Listener.findById(id)
+    }
+    if (!listenerDoc) {
+      listenerDoc = await Listener.findOne({ listenerId: String(id).toUpperCase() })
+    }
+
+    if (!listenerDoc) {
+      return res.status(404).json({ success: false, message: "Listener not found." })
+    }
+
+    const sessions = await ListenerSession.find({ listenerId: listenerDoc._id }).sort({ createdAt: -1 })
+
+    const completed = []
+    const notCompleted = []
+
+    sessions.forEach((s) => {
+      const durMin = s.actualDurationMinutes || s.durationMinutes || s.duration || 10
+      const item = {
+        id: s._id.toString(),
+        sessionId: s.sessionId,
+        clientId: s.clientId || "Anonymous Participant",
+        date: s.date,
+        time: s.time,
+        startTime: s.startTime || s.time,
+        endTime: s.endTime || null,
+        duration: durMin,
+        durationMinutes: durMin,
+        dur: `${durMin} min`,
+        status: s.status,
+        startedAt: s.startedAt,
+        endedAt: s.endedAt,
+        completedAt: s.completedAt,
+        cancelledAt: s.cancelledAt,
+        cancelledBy: s.cancelledBy,
+        cancelReason: s.cancelReason || (["Cancelled", "CANCELLED", "cancelled"].includes(s.status) ? "Cancelled" : ["Expired", "EXPIRED", "expired"].includes(s.status) ? "Expired" : ["Declined"].includes(s.status) ? "Declined by listener" : "Not attended"),
+      }
+
+      const st = String(s.status).toLowerCase()
+      if (st === "completed") {
+        completed.push({
+          ...item,
+          category: "Completed",
+        })
+      } else if (["cancelled", "declined", "expired", "no show", "no_show", "skipped"].includes(st)) {
+        notCompleted.push({
+          ...item,
+          category: "Not Completed",
+        })
+      }
+    })
+
+    const totalTracked = completed.length + notCompleted.length
+    const completionRate = totalTracked > 0 ? Math.round((completed.length / totalTracked) * 100) : 100
+
+    let filtered = [...completed, ...notCompleted]
+    if (filter === "completed") {
+      filtered = completed
+    } else if (filter === "not_completed") {
+      filtered = notCompleted
+    }
+
+    return res.status(200).json({
+      success: true,
+      listener: {
+        id: listenerDoc._id.toString(),
+        name: listenerDoc.name,
+        email: listenerDoc.email,
+        listenerId: listenerDoc.listenerId,
+      },
+      performance: {
+        totalSessions: sessions.length,
+        completedSessions: completed.length,
+        notCompletedSessions: notCompleted.length,
+        completionRate,
+      },
+      sessions: {
+        completed,
+        notCompleted,
+        all: filtered,
+      },
+    })
+  } catch (err) {
+    console.error("[ADMIN] Error fetching listener sessions:", err.message)
+    return res.status(500).json({ success: false, message: "Failed to load listener session history." })
+  }
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/admin/listeners/:id/performance
+//
+// Admin/Founder-protected — returns listener performance metrics
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/listeners/:id/performance", requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params
+    const ListenerSession = require("../models/ListenerSession")
+
+    let listenerDoc = null
+    if (mongoose.isValidObjectId(id)) {
+      listenerDoc = await Listener.findById(id)
+    }
+    if (!listenerDoc) {
+      listenerDoc = await Listener.findOne({ listenerId: String(id).toUpperCase() })
+    }
+
+    if (!listenerDoc) {
+      return res.status(404).json({ success: false, message: "Listener not found." })
+    }
+
+    const performance = await calculateListenerPerformance(listenerDoc._id)
+
+    return res.status(200).json({
+      success: true,
+      performance,
+    })
+  } catch (err) {
+    console.error("[ADMIN] Error fetching listener performance:", err.message)
+    return res.status(500).json({ success: false, message: "Failed to load listener performance." })
+  }
+})
+
+async function calculateListenerPerformance(listenerId) {
+  const ListenerSession = require("../models/ListenerSession")
+  const sessions = await ListenerSession.find({ listenerId })
+
+  let completedSessions = 0
+  let notCompletedSessions = 0
+
+  sessions.forEach((s) => {
+    const st = String(s.status).toLowerCase()
+    if (st === "completed" || s.completed) {
+      completedSessions++
+    } else if (["cancelled", "declined", "expired", "no show", "no_show", "skipped"].includes(st) || s.cancelledAt) {
+      notCompletedSessions++
+    }
+  })
+
+  const totalTracked = completedSessions + notCompletedSessions
+  const completionRate = totalTracked > 0 ? Math.round((completedSessions / totalTracked) * 100) : 100
+
+  return {
+    totalSessions: sessions.length,
+    completedSessions,
+    notCompletedSessions,
+    completionRate,
+  }
+}
+
+module.exports = router
+module.exports.calculateListenerPerformance = calculateListenerPerformance

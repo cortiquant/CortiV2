@@ -207,10 +207,21 @@ async function expirePassedSessions() {
     for (const session of activeCandidates) {
       const endMs = getSessionEndTimestamp(session)
       if (endMs && nowMs > endMs) {
-        session.status = "COMPLETED"
-        session.completed = true
-        if (!session.completedAt) {
-          session.completedAt = new Date(endMs)
+        if (session.started || session.status === "In Progress") {
+          // If session was started, mark Completed
+          session.status = "Completed"
+          session.completed = true
+          session.endedAt = new Date(endMs)
+          if (!session.completedAt) {
+            session.completedAt = new Date(endMs)
+          }
+        } else {
+          // If session was never started by start/end time, mark Expired (no show / expired)
+          session.status = "Expired"
+          session.completed = false
+          session.cancelledAt = new Date(endMs)
+          session.cancelledBy = "system"
+          session.cancelReason = "Expired session (No show / unattended)"
         }
         await session.save()
         expiredCount++

@@ -67,6 +67,8 @@ interface DashboardData {
   upcomingToday: number
   totalHoursListened: number
   completedSessions: number
+  notCompletedSessions?: number
+  completionRate?: number
   currentStatus: string
   nextSession: UpcomingSessionData | null
   todaysAvailability: Array<{ id: string; time: string; status: string }>
@@ -152,15 +154,55 @@ function HomeDashboard() {
         <p className="text-text-muted">Your space to listen, support, and help someone reset.</p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      {/* Top Stat Row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard label="Sessions Today" value={data?.sessionsToday ?? 0} sub={`${data?.upcomingToday ?? 0} upcoming`} />
         <StatCard label="Hours Listened" value={data?.totalHoursListened ?? 0} sub="Lifetime" />
-        <StatCard label="Sessions" value={data?.completedSessions ?? 0} sub="Completed" />
+        <StatCard label="Completed" value={data?.completedSessions ?? 0} sub="Finished" />
         <div className="card-base p-5 flex flex-col justify-center">
           <p className="text-xs font-semibold text-text-muted uppercase tracking-widest mb-3">Status</p>
           <div className="flex items-center gap-2">
             <div className={`w-2.5 h-2.5 rounded-full ${statusColor.split(" ")[1]} animate-pulse-dot`} />
             <span className={`text-sm font-medium ${statusColor.split(" ")[0]}`}>{data?.currentStatus || "Available"}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* My Performance Analytics Card */}
+      <div className="card-base p-6 mb-8 border border-border-p/80 bg-gradient-to-r from-surface/80 to-elevated/80">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+          <div>
+            <h2 className="text-base font-bold text-warm-white flex items-center gap-2">
+              <svg className="w-5 h-5 text-purple-core" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+              My Performance
+            </h2>
+            <p className="text-xs text-text-muted mt-0.5">Summary of session reliability and attendance</p>
+          </div>
+          <button
+            onClick={() => navigate("/listener-portal/sessions")}
+            className="text-xs font-semibold text-lavender-soft hover:text-warm-white flex items-center gap-1 cursor-pointer"
+          >
+            View History &rarr;
+          </button>
+        </div>
+
+        <div className="grid grid-cols-3 gap-4 text-center divide-x divide-border-p/60">
+          <div className="px-2">
+            <p className="text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">Completed</p>
+            <p className="text-2xl font-mono-data font-bold text-c-success">{data?.completedSessions ?? 0}</p>
+            <p className="text-[10px] text-text-muted mt-0.5">Finished sessions</p>
+          </div>
+          <div className="px-2">
+            <p className="text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">Not Completed</p>
+            <p className="text-2xl font-mono-data font-bold text-amber-400">{data?.notCompletedSessions ?? 0}</p>
+            <p className="text-[10px] text-text-muted mt-0.5">Cancelled / Expired</p>
+          </div>
+          <div className="px-2">
+            <p className="text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">Completion Rate</p>
+            <p className="text-2xl font-mono-data font-bold text-lavender-bright">{data?.completionRate ?? 100}%</p>
+            <p className="text-[10px] text-text-muted mt-0.5">Attendance ratio</p>
           </div>
         </div>
       </div>
@@ -210,24 +252,47 @@ function HomeDashboard() {
 
 function SessionsScreen() {
   const navigate = useNavigate()
-  const [tab, setTab] = useState<"upcoming" | "completed">("upcoming")
-  const [sessionsData, setSessionsData] = useState<{ upcoming: any[]; completed: any[]; requested: any[] }>({
+  const [tab, setTab] = useState<"upcoming" | "completed" | "not_completed">("upcoming")
+  const [sessionsData, setSessionsData] = useState<{ upcoming: any[]; completed: any[]; notCompleted: any[]; requested: any[] }>({
     upcoming: [],
     completed: [],
+    notCompleted: [],
     requested: [],
   })
+  const [performance, setPerformance] = useState<{
+    totalSessions: number
+    completedSessions: number
+    notCompletedSessions: number
+    completionRate: number
+  } | null>(null)
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
 
   const fetchSessions = async () => {
     try {
       const token = localStorage.getItem("cq_token")
-      const res = await fetch("/api/listener/sessions", {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      const json = await res.json()
-      if (res.ok && json.success) {
-        setSessionsData(json.sessions)
+      const [resSessions, resPerf] = await Promise.all([
+        fetch("/api/listener/sessions", {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch("/api/listener/performance", {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ])
+
+      const json = await resSessions.json()
+      if (resSessions.ok && json.success) {
+        setSessionsData({
+          upcoming: json.sessions?.upcoming || [],
+          completed: json.sessions?.completed || [],
+          notCompleted: json.sessions?.notCompleted || json.sessions?.cancelled || [],
+          requested: json.sessions?.requested || [],
+        })
+      }
+
+      const jsonPerf = await resPerf.json()
+      if (resPerf.ok && jsonPerf.success && jsonPerf.performance) {
+        setPerformance(jsonPerf.performance)
       }
     } finally {
       setLoading(false)
@@ -268,15 +333,49 @@ function SessionsScreen() {
     }
   }
 
-  const activeList = tab === "upcoming" ? [...sessionsData.requested, ...sessionsData.upcoming] : sessionsData.completed
+  const activeList =
+    tab === "upcoming"
+      ? [...sessionsData.requested, ...sessionsData.upcoming]
+      : tab === "completed"
+      ? sessionsData.completed
+      : sessionsData.notCompleted
+
+  const completedCount = performance?.completedSessions ?? sessionsData.completed.length
+  const notCompletedCount = performance?.notCompletedSessions ?? sessionsData.notCompleted.length
+  const completionRate = performance?.completionRate ?? 100
 
   return (
     <div className="animate-fade-up max-w-4xl mx-auto w-full">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-warm-white mb-2">Sessions</h1>
-        <p className="text-text-muted">Manage your upcoming and completed anonymous listening sessions.</p>
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold text-warm-white mb-2">Sessions & History</h1>
+        <p className="text-text-muted">Track your upcoming appointments, completed sessions, and reliability metrics.</p>
       </div>
 
+      {/* My Performance Analytics Card in Sessions screen */}
+      <div className="card-base p-5 mb-6 border border-border-p bg-surface/50">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">My Performance Analytics</p>
+          <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-purple-core/15 text-lavender-soft border border-purple-core/30">
+            {completionRate}% Completion Rate
+          </span>
+        </div>
+        <div className="grid grid-cols-3 gap-3 text-center">
+          <div className="p-3 bg-elevated rounded-xl border border-border-p/60">
+            <p className="text-[10px] text-text-muted uppercase tracking-wider mb-0.5">Completed</p>
+            <p className="text-xl font-bold font-mono-data text-c-success">{completedCount}</p>
+          </div>
+          <div className="p-3 bg-elevated rounded-xl border border-border-p/60">
+            <p className="text-[10px] text-text-muted uppercase tracking-wider mb-0.5">Not Completed</p>
+            <p className="text-xl font-bold font-mono-data text-amber-400">{notCompletedCount}</p>
+          </div>
+          <div className="p-3 bg-elevated rounded-xl border border-border-p/60">
+            <p className="text-[10px] text-text-muted uppercase tracking-wider mb-0.5">Completion Rate</p>
+            <p className="text-xl font-bold font-mono-data text-lavender-bright">{completionRate}%</p>
+          </div>
+        </div>
+      </div>
+
+      {/* 3 Tabs: Upcoming, Completed, Not Completed */}
       <div className="flex gap-4 border-b border-border-p mb-6">
         <button
           onClick={() => setTab("upcoming")}
@@ -294,6 +393,14 @@ function SessionsScreen() {
         >
           Completed ({sessionsData.completed.length})
         </button>
+        <button
+          onClick={() => setTab("not_completed")}
+          className={`pb-3 border-b-2 font-semibold text-sm cursor-pointer transition-colors ${
+            tab === "not_completed" ? "border-purple-core text-lavender-soft" : "border-transparent text-text-muted hover:text-text-secondary"
+          }`}
+        >
+          Not Completed ({sessionsData.notCompleted.length})
+        </button>
       </div>
 
       {loading ? (
@@ -304,62 +411,122 @@ function SessionsScreen() {
         </div>
       ) : activeList.length === 0 ? (
         <EmptyState
-          title={tab === "upcoming" ? "No upcoming sessions" : "No completed sessions yet"}
-          msg={tab === "upcoming" ? "New sessions booked by participants will appear here." : "Completed sessions will be logged here with duration stats."}
+          title={
+            tab === "upcoming"
+              ? "No upcoming sessions"
+              : tab === "completed"
+              ? "No completed sessions yet"
+              : "No uncompleted sessions"
+          }
+          msg={
+            tab === "upcoming"
+              ? "New sessions booked by participants will appear here."
+              : tab === "completed"
+              ? "Completed sessions will be logged here with start/end duration stats."
+              : "Cancelled, expired, or skipped sessions will appear here with reasons."
+          }
         />
       ) : (
         <div className="space-y-4">
-          {activeList.map((s) => (
-            <div key={s.id} className="card-base p-5 flex items-center justify-between hover:border-border-s transition-colors">
-              <div>
-                <p className="font-semibold text-warm-white mb-1.5 flex items-center gap-2">
-                  {s.participant || "Anonymous Participant"}
-                  <span className="text-[10px] font-mono-data text-text-muted bg-surface px-1.5 py-0.5 rounded">{s.sessionId}</span>
-                </p>
-                <div className="flex items-center gap-3 text-xs text-text-secondary">
-                  <span>{s.date} · {s.time}</span>
-                  <span>{s.dur}</span>
-                  <span className={`${s.status === "Starting soon" || s.status === "In Progress" ? "text-purple-core font-medium" : "text-text-muted"}`}>
-                    {s.status}
-                  </span>
+          {activeList.map((s) => {
+            const isCompletedTab = tab === "completed"
+            const isNotCompletedTab = tab === "not_completed"
+
+            return (
+              <div key={s.id} className="card-base p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-border-s transition-colors">
+                <div className="space-y-1.5 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-warm-white">
+                      {s.participant || (s.clientId ? `Client ID: ${s.clientId}` : "Anonymous Participant")}
+                    </span>
+                    <span className="text-[10px] font-mono-data text-text-muted bg-surface border border-border-p px-1.5 py-0.5 rounded">
+                      {s.sessionId}
+                    </span>
+                    {s.clientId && (
+                      <span className="text-[10px] font-mono-data text-lavender-soft/80 bg-purple-core/10 border border-purple-core/20 px-1.5 py-0.5 rounded">
+                        Client: {s.clientId}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Date & Time Row */}
+                  <div className="flex flex-wrap items-center gap-3 text-xs text-text-secondary">
+                    <span>📅 {s.date}</span>
+                    <span>⏰ {s.time}</span>
+                    {s.startTime && s.endTime && (
+                      <span className="text-text-muted">
+                        ({s.startTime} - {s.endTime})
+                      </span>
+                    )}
+                    <span>⏱ {s.dur || `${s.duration || 10} min`}</span>
+                  </div>
+
+                  {/* Additional info for Completed and Not Completed */}
+                  {isCompletedTab && (
+                    <div className="text-[11px] text-text-muted flex items-center gap-3 pt-1">
+                      {s.completedAt && (
+                        <span>Finished: {new Date(s.completedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                      )}
+                      <span>Actual duration: {s.duration || 10} minutes</span>
+                    </div>
+                  )}
+
+                  {isNotCompletedTab && (
+                    <div className="text-[11px] pt-1 flex flex-wrap items-center gap-2">
+                      <span className="text-amber-400 font-medium">
+                        Reason: {s.cancelReason || "Cancelled or Expired session"}
+                      </span>
+                      {s.cancelledBy && (
+                        <span className="text-text-muted">
+                          (by {s.cancelledBy})
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Right side Action or Status Badge */}
+                <div className="flex items-center sm:justify-end gap-2">
+                  {s.status === "Requested" ? (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleAccept(s.sessionId || s.id)}
+                        disabled={actionLoading === (s.sessionId || s.id)}
+                        className="btn-ghost px-4 py-2 text-xs font-semibold rounded-xl text-lavender-soft border-purple-core/30 hover:border-purple-core/60 cursor-pointer"
+                      >
+                        Accept
+                      </button>
+                      <button
+                        onClick={() => handleDecline(s.sessionId || s.id)}
+                        disabled={actionLoading === (s.sessionId || s.id)}
+                        className="btn-ghost px-4 py-2 text-xs font-medium rounded-xl text-text-muted cursor-pointer"
+                      >
+                        Decline
+                      </button>
+                    </div>
+                  ) : s.status === "Scheduled" || s.status === "Starting soon" || s.status === "In Progress" || s.status === "Booked" ? (
+                    <button
+                      onClick={() => {
+                        const sid = s.sessionId || s.id || s._id
+                        navigate(`/listener-portal/session/${sid}`)
+                      }}
+                      className="btn-primary px-5 py-2.5 text-xs font-semibold rounded-xl cursor-pointer"
+                    >
+                      Enter Session
+                    </button>
+                  ) : isCompletedTab ? (
+                    <span className="text-xs text-c-success bg-c-success/10 border border-c-success/20 px-3 py-1.5 rounded-lg font-medium">
+                      ✓ Completed
+                    </span>
+                  ) : (
+                    <span className="text-xs text-amber-400 bg-amber-400/10 border border-amber-400/25 px-3 py-1.5 rounded-lg font-medium">
+                      ✕ Not Completed ({s.status})
+                    </span>
+                  )}
                 </div>
               </div>
-
-              {s.status === "Requested" ? (
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleAccept(s.sessionId || s.id)}
-                    disabled={actionLoading === (s.sessionId || s.id)}
-                    className="btn-ghost px-4 py-2 text-xs font-semibold rounded-xl text-lavender-soft border-purple-core/30 hover:border-purple-core/60 cursor-pointer"
-                  >
-                    Accept
-                  </button>
-                  <button
-                    onClick={() => handleDecline(s.sessionId || s.id)}
-                    disabled={actionLoading === (s.sessionId || s.id)}
-                    className="btn-ghost px-4 py-2 text-xs font-medium rounded-xl text-text-muted cursor-pointer"
-                  >
-                    Decline
-                  </button>
-                </div>
-              ) : s.status === "Scheduled" || s.status === "Starting soon" || s.status === "In Progress" ? (
-                <button
-                  onClick={() => {
-                    const sid = s.sessionId || s.id || s._id
-                    console.log("Entering session from list, sid:", sid)
-                    navigate(`/listener-portal/session/${sid}`)
-                  }}
-                  className="btn-primary px-5 py-2.5 text-xs font-semibold rounded-xl cursor-pointer"
-                >
-                  Enter Session
-                </button>
-              ) : (
-                <span className="text-xs text-c-success bg-c-success/10 border border-c-success/20 px-3 py-1.5 rounded-lg font-medium">
-                  Completed
-                </span>
-              )}
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
       <PrivacyNotice />

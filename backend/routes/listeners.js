@@ -448,13 +448,24 @@ router.get("/dashboard", requireListener, async (req, res) => {
     })
     const sessionsToday = sessionsTodayDocs.length
 
-    // 2. Completed Sessions (Lifetime):
-    // Count only: COMPLETED (or Completed)
-    const completedDocs = await ListenerSession.find({
-      listenerId,
-      status: { $in: ["COMPLETED", "Completed"] },
+    // 2. Completed and Not Completed Sessions (Lifetime)
+    const allListenerSessions = await ListenerSession.find({ listenerId })
+    let completedSessions = 0
+    let notCompletedSessions = 0
+
+    allListenerSessions.forEach((s) => {
+      const st = String(s.status).toLowerCase()
+      if (st === "completed") {
+        completedSessions++
+      } else if (["cancelled", "declined", "expired", "no show", "no_show", "skipped"].includes(st)) {
+        notCompletedSessions++
+      }
     })
-    const completedSessions = completedDocs.length
+
+    const totalTrackedSessions = completedSessions + notCompletedSessions
+    const completionRate = totalTrackedSessions > 0 ? Math.round((completedSessions / totalTrackedSessions) * 100) : 100
+
+    const completedDocs = allListenerSessions.filter((s) => String(s.status).toLowerCase() === "completed")
 
     // 3. Upcoming Today:
     // Count only: BOOKED where startTime > now (and today)
@@ -562,6 +573,8 @@ router.get("/dashboard", requireListener, async (req, res) => {
       upcomingToday,
       totalHoursListened,
       completedSessions,
+      notCompletedSessions,
+      completionRate,
       currentStatus: req.user.availabilityStatus || "Available",
       nextSession,
       todaysAvailability,
@@ -699,66 +712,148 @@ router.post("/availability", requireListener, async (req, res) => {
 // GET /api/listener/sessions
 //
 // Protected — fetches real sessions for the authenticated listener
+// Query param: ?filter=completed|not_completed|all
 // ─────────────────────────────────────────────────────────────────────────────
 router.get("/sessions", requireListener, async (req, res) => {
   try {
     const ListenerSession = require("../models/ListenerSession")
     const listenerId = req.user._id
+    const { filter } = req.query
 
     const sessions = await ListenerSession.find({ listenerId }).sort({ createdAt: -1 })
 
     const upcoming = []
     const completed = []
     const requested = []
-    const cancelled = []
+    const notCompleted = []
 
     sessions.forEach((s) => {
+      const durMin = s.actualDurationMinutes || s.durationMinutes || s.duration || 10
       const item = {
         id: s._id.toString(),
         sessionId: s.sessionId,
         clientId: s.clientId || "Anonymous Participant",
         date: s.date,
         time: s.time,
-        dur: `${s.durationMinutes || s.duration || 10} min`,
+        startTime: s.startTime || s.time,
+        endTime: s.endTime || null,
+        dur: `${durMin} min`,
+        duration: durMin,
+        durationMinutes: durMin,
         status: s.status,
         participant: s.clientId ? `Client ID: ${s.clientId}` : "Anonymous Participant",
         scheduledAt: s.scheduledAt,
         startedAt: s.startedAt,
+        endedAt: s.endedAt,
         completedAt: s.completedAt,
+        cancelledAt: s.cancelledAt,
+        cancelledBy: s.cancelledBy,
+        cancelReason: s.cancelReason || (["Cancelled", "CANCELLED", "cancelled"].includes(s.status) ? "Cancelled" : ["Expired", "EXPIRED", "expired"].includes(s.status) ? "Expired" : ["Declined"].includes(s.status) ? "Declined by listener" : "Not attended"),
       }
 
-      if (["Scheduled", "Confirmed", "In Progress", "BOOKED", "Booked", "ACTIVE", "Active"].includes(s.status)) {
-        upcoming.push(item)
-      } else if (["Completed", "COMPLETED"].includes(s.status)) {
+      const st = String(s.status).toLowerCase()
+
+      if (st === "completed") {
         completed.push(item)
-      } else if (["Requested", "REQUESTED"].includes(s.status)) {
+      } else if (["cancelled", "declined", "expired", "no show", "no_show", "skipped"].includes(st)) {
+        notCompleted.push(item)
+      } else if (st === "requested") {
         requested.push(item)
       } else {
-        cancelled.push(item)
+        upcoming.push(item)
       }
     })
+
+    let filteredList = sessions.map((s) => {
+      const durMin = s.actualDurationMinutes || s.durationMinutes || s.duration || 10
+      return {
+        id: s._id.toString(),
+        sessionId: s.sessionId,
+        clientId: s.clientId || "Anonymous Participant",
+        date: s.date,
+        time: s.time,
+        startTime: s.startTime || s.time,
+        endTime: s.endTime || null,
+        dur: `${durMin} min`,
+        duration: durMin,
+        durationMinutes: durMin,
+        status: s.status,
+        participant: s.clientId ? `Client ID: ${s.clientId}` : "Anonymous Participant",
+        startedAt: s.startedAt,
+        endedAt: s.endedAt,
+        completedAt: s.completedAt,
+        cancelledAt: s.cancelledAt,
+        cancelledBy: s.cancelledBy,
+        cancelReason: s.cancelReason,
+      }
+    })
+
+    if (filter === "completed") {
+      filteredList = completed
+    } else if (filter === "not_completed") {
+      filteredList = notCompleted
+    }
 
     return res.status(200).json({
       success: true,
       sessions: {
         upcoming,
         completed,
+        notCompleted,
         requested,
-        cancelled,
+        cancelled: notCompleted,
       },
-      all: sessions.map((s) => ({
-        id: s._id.toString(),
-        sessionId: s.sessionId,
-        date: s.date,
-        time: s.time,
-        dur: `${s.duration || 45} min`,
-        status: s.status,
-        participant: "Anonymous Participant",
-      })),
+      filtered: filteredList,
+      all: filteredList,
     })
   } catch (err) {
     console.error("[LISTENER] GET /sessions error:", err.message)
     res.status(500).json({ success: false, message: "Unable to load sessions." })
+  }
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/listener/performance
+//
+// Protected — fetches listener performance metrics
+// { totalSessions, completedSessions, notCompletedSessions, completionRate }
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/performance", requireListener, async (req, res) => {
+  try {
+    const ListenerSession = require("../models/ListenerSession")
+    const listenerId = req.user._id
+
+    const sessions = await ListenerSession.find({ listenerId })
+
+    let completedCount = 0
+    let notCompletedCount = 0
+
+    sessions.forEach((s) => {
+      const st = String(s.status).toLowerCase()
+      if (st === "completed") {
+        completedCount++
+      } else if (["cancelled", "declined", "expired", "no show", "no_show", "skipped"].includes(st)) {
+        notCompletedCount++
+      }
+    })
+
+    const totalTrackedSessions = completedCount + notCompletedCount
+    const completionRate = totalTrackedSessions > 0
+      ? Math.round((completedCount / totalTrackedSessions) * 100)
+      : 100
+
+    return res.status(200).json({
+      success: true,
+      performance: {
+        totalSessions: sessions.length,
+        completedSessions: completedCount,
+        notCompletedSessions: notCompletedCount,
+        completionRate, // e.g. 85 for 85%
+      },
+    })
+  } catch (err) {
+    console.error("[LISTENER] GET /performance error:", err.message)
+    res.status(500).json({ success: false, message: "Unable to load performance metrics." })
   }
 })
 
@@ -857,7 +952,10 @@ router.post("/sessions/:id/decline", requireListener, async (req, res) => {
       return res.status(404).json({ success: false, message: "Session not found." })
     }
 
-    session.status = "Declined"
+    session.status = "Cancelled"
+    session.cancelledAt = new Date()
+    session.cancelledBy = "listener"
+    session.cancelReason = (req.body && req.body.reason) ? String(req.body.reason).trim() : "Cancelled by listener"
     await session.save()
 
     // Restore slot to Available in ListenerAvailability if it was booked
@@ -1092,7 +1190,9 @@ router.post("/sessions/:id/complete", requireListener, async (req, res) => {
     session.status = "Completed"
     session.completed = true
     session.completedAt = now
+    session.endedAt = now
     session.actualDurationMinutes = elapsedMinutes
+    session.duration = elapsedMinutes
     await session.save()
 
     // Revert listener status back to Available
@@ -1886,6 +1986,9 @@ router.post("/sessions/:sessionId/cancel-booking", requireAuth, async (req, res)
     }
 
     session.status = "Cancelled"
+    session.cancelledAt = new Date()
+    session.cancelledBy = "client"
+    session.cancelReason = (req.body && req.body.reason) ? String(req.body.reason).trim() : "Cancelled by client"
     await session.save()
 
     // Restore slot to Available in ListenerAvailability if it was booked

@@ -43,7 +43,16 @@ if (!process.env.JWT_SECRET) {
 }
 
 const PORT       = process.env.PORT || 3001
-const CORS_ORIGIN = process.env.CORS_ORIGIN || "http://localhost:8443"
+const rawCorsOrigin = process.env.CORS_ORIGIN || process.env.FRONTEND_URL || "http://localhost:8443"
+const allowedOrigins = rawCorsOrigin.split(",").map(s => s.trim()).filter(Boolean)
+// Also ensure FRONTEND_URL is included if explicitly configured
+if (process.env.FRONTEND_URL && !allowedOrigins.includes(process.env.FRONTEND_URL.trim())) {
+  allowedOrigins.push(process.env.FRONTEND_URL.trim())
+}
+// Default localhost in dev if not already present
+if (!allowedOrigins.includes("http://localhost:8443")) {
+  allowedOrigins.push("http://localhost:8443")
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Express app
@@ -52,7 +61,18 @@ const app = express()
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
 app.use(cors({
-  origin: CORS_ORIGIN,
+  origin: (origin, callback) => {
+    // allow requests with no origin (like mobile apps, curl, server-to-server)
+    if (!origin) return callback(null, true)
+    if (allowedOrigins.includes(origin) || allowedOrigins.includes("*")) {
+      return callback(null, true)
+    }
+    // Allow https://cortiquant.online by default as well
+    if (origin === "https://cortiquant.online" || origin.endsWith(".cortiquant.online")) {
+      return callback(null, true)
+    }
+    return callback(null, false)
+  },
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,
@@ -156,7 +176,7 @@ app.use((err, req, res, _next) => {
 // ─────────────────────────────────────────────────────────────────────────────
 const server = app.listen(PORT, () => {
   console.log(`[SERVER] CortiQuant backend running on http://localhost:${PORT}`)
-  console.log(`[SERVER] CORS allowed origin: ${CORS_ORIGIN}`)
+  console.log(`[SERVER] CORS allowed origins: ${allowedOrigins.join(", ")}`)
 })
 
 server.on("error", (err) => {
@@ -189,3 +209,4 @@ async function connectDB() {
 
 connectDB()
 verifySMTP()
+// Finalize configuration

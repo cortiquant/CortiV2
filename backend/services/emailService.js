@@ -155,7 +155,7 @@ function buildInvitationHtml({ hrName, orgName, orgCode, acceptUrl, expiresInDay
  * @param {string} options.rawToken - Raw unhashed invitation token
  */
 async function sendHRInvitation({ to, hrName, orgName, orgCode, rawToken }) {
-  const appUrl = (process.env.APP_URL || "http://localhost:8443").replace(/\/$/, "")
+  const appUrl = (process.env.FRONTEND_URL || process.env.APP_URL || "http://localhost:8443").replace(/\/$/, "")
   const acceptUrl = `${appUrl}/hr/accept-invitation?token=${encodeURIComponent(rawToken)}`
 
   const fromAddress = process.env.EMAIL_FROM || process.env.SMTP_FROM || "CortiQuant <cortiquant@gmail.com>"
@@ -291,7 +291,7 @@ function buildListenerInvitationHtml({ listenerName, acceptUrl, expiresInHours =
  * @param {string} options.rawToken - Raw unhashed invitation token
  */
 async function sendListenerInvitation({ to, listenerName, rawToken }) {
-  const appUrl = (process.env.APP_URL || "http://localhost:8443").replace(/\/$/, "")
+  const appUrl = (process.env.FRONTEND_URL || process.env.APP_URL || "http://localhost:8443").replace(/\/$/, "")
   const acceptUrl = `${appUrl}/listener/accept-invite?token=${encodeURIComponent(rawToken)}`
 
   const fromAddress = process.env.EMAIL_FROM || process.env.SMTP_FROM || "CortiQuant <cortiquant@gmail.com>"

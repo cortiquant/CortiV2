@@ -115,6 +115,14 @@ const listenerSessionSchema = new mongoose.Schema(
         "Cancelled",
         "Expired",
         "No Show",
+        "Skipped",
+        "scheduled",
+        "in_progress",
+        "completed",
+        "cancelled",
+        "expired",
+        "skipped",
+        "no_show",
       ],
       default: "BOOKED",
       index: true,
@@ -130,8 +138,28 @@ const listenerSessionSchema = new mongoose.Schema(
       default: null,
     },
 
+    endedAt: {
+      type: Date,
+      default: null,
+    },
+
     completedAt: {
       type: Date,
+      default: null,
+    },
+
+    cancelledAt: {
+      type: Date,
+      default: null,
+    },
+
+    cancelledBy: {
+      type: String, // "listener" | "client" | "admin" | "system"
+      default: null,
+    },
+
+    cancelReason: {
+      type: String, // e.g. "Cancelled by client", "Client No Show", "Session Expired", etc.
       default: null,
     },
 

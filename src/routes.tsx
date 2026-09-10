@@ -678,6 +678,14 @@ export const router = createBrowserRouter([
         Component: ListenerAcceptInviteScreen,
       },
       {
+        path: "lister",
+        Component: ListenerAcceptInviteScreen,
+      },
+      {
+        path: "lister/accept-invite",
+        Component: ListenerAcceptInviteScreen,
+      },
+      {
         path: "listener/connect",
         Component: () => <EmployeeApp initialScreen="listener-connect" />,
         loader: requireActiveEmployeeLoader,

@@ -1479,6 +1479,12 @@ interface ListenerRow {
   expiresAt?: string
   invitationId?: string
   isInvitation?: boolean
+  performance?: {
+    totalSessions: number
+    completedSessions: number
+    notCompletedSessions: number
+    completionRate: number
+  }
 }
 
 function InviteListenerModal({
@@ -1762,12 +1768,247 @@ function DeleteListenerModal({
   )
 }
 
+function ListenerSessionHistoryModal({
+  isOpen,
+  listener,
+  onClose,
+}: {
+  isOpen: boolean
+  listener: ListenerRow | null
+  onClose: () => void
+}) {
+  const [activeTab, setActiveTab] = useState<"completed" | "not_completed">("completed")
+  const [sessionsData, setSessionsData] = useState<{
+    completed: any[]
+    notCompleted: any[]
+  }>({
+    completed: [],
+    notCompleted: [],
+  })
+  const [performance, setPerformance] = useState<{
+    totalSessions: number
+    completedSessions: number
+    notCompletedSessions: number
+    completionRate: number
+  } | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!isOpen || !listener) return
+
+    const listenerId = listener._id || listener.id
+    setLoading(true)
+    setError(null)
+
+    const fetchHistory = async () => {
+      try {
+        const res = await apiRequest(`/api/admin/listeners/${listenerId}/sessions`)
+        if (res.ok && res.data?.success) {
+          setSessionsData({
+            completed: res.data.sessions?.completed || [],
+            notCompleted: res.data.sessions?.notCompleted || [],
+          })
+          setPerformance(res.data.performance || null)
+        } else {
+          setError(res.data?.message || "Failed to load session history.")
+        }
+      } catch {
+        setError("Network error fetching session history.")
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchHistory()
+  }, [isOpen, listener])
+
+  if (!isOpen || !listener) return null
+
+  const activeList = activeTab === "completed" ? sessionsData.completed : sessionsData.notCompleted
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm animate-fade-in">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl overflow-hidden border border-gray-100 flex flex-col max-h-[90vh]">
+        {/* Modal Header */}
+        <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-purple-50 border border-purple-100 flex items-center justify-center text-purple-700 font-bold text-sm">
+              {(listener.name ? listener.name.slice(0, 2) : "LS").toUpperCase()}
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                {listener.name}
+                <span className="font-mono text-xs text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-100 font-normal">
+                  {listener.listenerId || "No ID"}
+                </span>
+              </h2>
+              <p className="text-xs text-gray-500">Session Performance & Attendance History</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100 cursor-pointer"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Modal Body with Performance Summary */}
+        <div className="p-6 overflow-y-auto space-y-6">
+          {/* Performance Overview Banner */}
+          <div className="grid grid-cols-4 gap-3 bg-gray-50 p-4 rounded-xl border border-gray-200">
+            <div className="text-center">
+              <p className="text-[10px] uppercase font-semibold text-gray-500 tracking-wider">Total Sessions</p>
+              <p className="text-xl font-bold font-mono text-gray-900 mt-0.5">
+                {performance?.totalSessions ?? (sessionsData.completed.length + sessionsData.notCompleted.length)}
+              </p>
+            </div>
+            <div className="text-center">
+              <p className="text-[10px] uppercase font-semibold text-green-600 tracking-wider">Completed</p>
+              <p className="text-xl font-bold font-mono text-green-700 mt-0.5">
+                {performance?.completedSessions ?? sessionsData.completed.length}
+              </p>
+            </div>
+            <div className="text-center">
+              <p className="text-[10px] uppercase font-semibold text-amber-600 tracking-wider">Not Completed</p>
+              <p className="text-xl font-bold font-mono text-amber-600 mt-0.5">
+                {performance?.notCompletedSessions ?? sessionsData.notCompleted.length}
+              </p>
+            </div>
+            <div className="text-center">
+              <p className="text-[10px] uppercase font-semibold text-purple-600 tracking-wider">Completion %</p>
+              <p className="text-xl font-bold font-mono text-purple-700 mt-0.5">
+                {performance?.completionRate ?? 100}%
+              </p>
+            </div>
+          </div>
+
+          {/* Session History Tabs */}
+          <div className="flex border-b border-gray-200 gap-6 text-sm font-medium">
+            <button
+              onClick={() => setActiveTab("completed")}
+              className={`pb-3 border-b-2 transition-colors cursor-pointer flex items-center gap-2 ${
+                activeTab === "completed"
+                  ? "border-purple-600 text-purple-700 font-semibold"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              <span>Completed Sessions</span>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200">
+                {sessionsData.completed.length}
+              </span>
+            </button>
+            <button
+              onClick={() => setActiveTab("not_completed")}
+              className={`pb-3 border-b-2 transition-colors cursor-pointer flex items-center gap-2 ${
+                activeTab === "not_completed"
+                  ? "border-purple-600 text-purple-700 font-semibold"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              <span>Not Completed Sessions</span>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                {sessionsData.notCompleted.length}
+              </span>
+            </button>
+          </div>
+
+          {/* Tab Content List */}
+          {loading ? (
+            <div className="p-8 text-center text-gray-500 text-sm flex flex-col items-center justify-center gap-2">
+              <svg className="w-5 h-5 animate-spin text-purple-600" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              </svg>
+              <span>Loading session records...</span>
+            </div>
+          ) : error ? (
+            <div className="p-4 bg-red-50 text-red-700 text-xs rounded-lg border border-red-200 text-center">
+              {error}
+            </div>
+          ) : activeList.length === 0 ? (
+            <div className="p-8 text-center text-gray-500 text-xs bg-gray-50 rounded-xl border border-gray-100">
+              {activeTab === "completed"
+                ? "No completed sessions on record for this listener."
+                : "No uncompleted or cancelled sessions on record."}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {activeList.map((s) => {
+                const isCompleted = activeTab === "completed"
+                return (
+                  <div
+                    key={s.id || s.sessionId}
+                    className="p-4 bg-white rounded-xl border border-gray-200 hover:border-gray-300 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-gray-900">
+                          {s.clientId ? `Client ID: ${s.clientId}` : "Anonymous Client"}
+                        </span>
+                        <span className="font-mono text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">
+                          {s.sessionId}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3 text-gray-600">
+                        <span>📅 {s.date}</span>
+                        <span>⏰ {s.time}</span>
+                        {s.startTime && s.endTime && (
+                          <span className="text-gray-400">({s.startTime} - {s.endTime})</span>
+                        )}
+                        <span>⏱ Duration: {s.dur || `${s.duration || 10} min`}</span>
+                      </div>
+                      {!isCompleted && (
+                        <p className="text-amber-700 font-medium pt-0.5">
+                          Reason: {s.cancelReason || "Cancelled or expired session"}
+                          {s.cancelledBy && <span className="text-gray-500 font-normal"> (by {s.cancelledBy})</span>}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {isCompleted ? (
+                        <span className="px-2.5 py-1 rounded-full bg-green-50 text-green-700 font-medium border border-green-200 whitespace-nowrap">
+                          ✓ Completed
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 font-medium border border-amber-200 whitespace-nowrap">
+                          ✕ Not Completed ({s.status})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Modal Footer */}
+        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex items-center justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ListenersScreen() {
   const [listeners, setListeners] = useState<ListenerRow[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [inviteModalOpen, setInviteModalOpen] = useState(false)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [historyModalOpen, setHistoryModalOpen] = useState(false)
+  const [selectedListenerForHistory, setSelectedListenerForHistory] = useState<ListenerRow | null>(null)
   const [selectedListenerForDelete, setSelectedListenerForDelete] = useState<ListenerRow | null>(null)
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
@@ -1880,8 +2121,8 @@ function ListenersScreen() {
     }
   }
 
-  // Consistent 6-column CSS grid definition
-  const gridTemplate = "minmax(220px, 1.5fr) 120px minmax(250px, 2fr) 110px 130px 170px"
+  // Consistent 7-column CSS grid definition including performance analytics
+  const gridTemplate = "minmax(200px, 1.4fr) 110px minmax(220px, 1.8fr) 95px 150px 115px 210px"
 
   const formatDate = (dateString?: string) => {
     if (!dateString) return null
@@ -1915,9 +2156,9 @@ function ListenersScreen() {
         {/* Header section with Title, Description, Search, and + Invite Listener button */}
         <div className="px-6 py-5 border-b border-gray-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-gray-50/30">
           <div>
-            <h1 className="text-lg font-bold text-gray-900">Peer Support Listeners</h1>
+            <h1 className="text-lg font-bold text-gray-900">Human Listeners</h1>
             <p className="text-sm text-gray-500 mt-1">
-              Manage trained listener accounts, send new invitations, and monitor peer support availability.
+              Manage trained listener accounts, send new invitations, view session performance, and monitor session history.
             </p>
           </div>
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
@@ -1947,7 +2188,7 @@ function ListenersScreen() {
 
         {/* Responsive Table Area using explicit CSS Grid for absolute alignment */}
         <div className="overflow-x-auto flex-1">
-          <div className="min-w-[970px]">
+          <div className="min-w-[1100px]">
             {/* Header Row */}
             <div
               className="grid items-center px-6 py-3.5 bg-gray-50 text-gray-500 text-xs font-semibold uppercase tracking-wider border-b border-gray-100 gap-4"
@@ -1957,6 +2198,7 @@ function ListenersScreen() {
               <div>Listener ID</div>
               <div>Email</div>
               <div>Status</div>
+              <div>Performance</div>
               <div>Joined / Invited</div>
               <div className="text-right">Action</div>
             </div>
@@ -2004,13 +2246,20 @@ function ListenersScreen() {
                   // Normalized status for badge
                   const badgeStatus = isPending ? "Pending" : l.status
 
+                  const perf = l.performance || {
+                    totalSessions: 0,
+                    completedSessions: 0,
+                    notCompletedSessions: 0,
+                    completionRate: 0,
+                  }
+
                   return (
                     <div
                       key={l._id || l.id}
                       className="grid items-center px-6 py-4 hover:bg-gray-50/70 transition-colors gap-4 text-sm"
                       style={{ gridTemplateColumns: gridTemplate }}
                     >
-                      {/* 1. Listener column: [Avatar] Listener Name ONLY (clean, no duplicate ID) */}
+                      {/* 1. Listener column: [Avatar] Listener Name ONLY */}
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="w-8 h-8 rounded-full bg-purple-50 border border-purple-100 flex items-center justify-center text-purple-700 font-semibold text-xs flex-shrink-0">
                           {(l.name ? l.name.slice(0, 2) : "LS").toUpperCase()}
@@ -2040,7 +2289,26 @@ function ListenersScreen() {
                         <StatusBadge status={badgeStatus} />
                       </div>
 
-                      {/* 5. Joined / Invited column: Meaningful date */}
+                      {/* 5. Performance column */}
+                      <div className="text-xs">
+                        {isPending ? (
+                          <span className="text-gray-400 text-[11px]">No data yet</span>
+                        ) : (
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-1.5 font-medium text-gray-800">
+                              <span className="text-purple-700 font-semibold">{perf.completionRate}%</span>
+                              <span className="text-gray-400 font-normal">rate</span>
+                            </div>
+                            <div className="text-[11px] text-gray-500 flex items-center gap-1">
+                              <span className="text-green-600 font-medium">{perf.completedSessions} done</span>
+                              <span>•</span>
+                              <span className="text-amber-600 font-medium">{perf.notCompletedSessions} uncompleted</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 6. Joined / Invited column: Meaningful date */}
                       <div className="text-xs text-gray-600 flex flex-col justify-center">
                         {isPending ? (
                           <>
@@ -2060,8 +2328,22 @@ function ListenersScreen() {
                         )}
                       </div>
 
-                      {/* 6. Action column: Compact, non-overlapping buttons aligned right with Delete */}
+                      {/* 7. Action column */}
                       <div className="flex items-center justify-end gap-1.5 text-right">
+                        {/* History Button for non-pending listeners */}
+                        {!isPending && (
+                          <button
+                            onClick={() => {
+                              setSelectedListenerForHistory(l)
+                              setHistoryModalOpen(true)
+                            }}
+                            className="text-purple-700 hover:text-purple-900 px-2 py-1 rounded text-xs font-medium border border-purple-200 hover:bg-purple-50 transition-colors cursor-pointer whitespace-nowrap"
+                            title="View session history and details"
+                          >
+                            History
+                          </button>
+                        )}
+
                         {isPending ? (
                           <>
                             <button
@@ -2141,6 +2423,15 @@ function ListenersScreen() {
         onDeleted={() => {
           setActionMessage({ type: "success", text: "Listener deleted successfully." })
           fetchListeners()
+        }}
+      />
+
+      <ListenerSessionHistoryModal
+        isOpen={historyModalOpen}
+        listener={selectedListenerForHistory}
+        onClose={() => {
+          setHistoryModalOpen(false)
+          setSelectedListenerForHistory(null)
         }}
       />
     </div>
