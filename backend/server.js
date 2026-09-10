@@ -42,14 +42,20 @@ if (!process.env.JWT_SECRET) {
   process.exit(1)
 }
 
+const { getFrontendUrl } = require("./config/appConfig")
 const PORT       = process.env.PORT || 3001
-const rawCorsOrigin = process.env.CORS_ORIGIN || process.env.FRONTEND_URL || "http://localhost:8443"
+const configuredFrontend = getFrontendUrl()
+const rawCorsOrigin = process.env.CORS_ORIGIN || configuredFrontend
 const allowedOrigins = rawCorsOrigin.split(",").map(s => s.trim()).filter(Boolean)
-// Also ensure FRONTEND_URL is included if explicitly configured
-if (process.env.FRONTEND_URL && !allowedOrigins.includes(process.env.FRONTEND_URL.trim())) {
-  allowedOrigins.push(process.env.FRONTEND_URL.trim())
+
+// Ensure configured frontend URL is always present in allowed origins
+if (!allowedOrigins.includes(configuredFrontend)) {
+  allowedOrigins.push(configuredFrontend)
 }
-// Default localhost in dev if not already present
+// Default production domain and localhost in dev
+if (!allowedOrigins.includes("https://cortiquant.online")) {
+  allowedOrigins.push("https://cortiquant.online")
+}
 if (!allowedOrigins.includes("http://localhost:8443")) {
   allowedOrigins.push("http://localhost:8443")
 }

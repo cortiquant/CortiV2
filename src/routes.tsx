@@ -536,6 +536,14 @@ export const router = createBrowserRouter([
         Component: AcceptInviteScreen,
       },
       {
+        path: "accept-invite",
+        Component: AcceptInviteScreen,
+      },
+      {
+        path: "accept-invitation",
+        Component: AcceptInvitation,
+      },
+      {
         path: "privacy-policy",
         Component: PrivacyPolicyScreen,
       },
