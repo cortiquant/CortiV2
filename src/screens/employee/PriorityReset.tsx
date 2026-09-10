@@ -287,7 +287,7 @@ export default function PriorityReset({ onBack, onNav }: PriorityResetProps) {
   }
 
   return (
-    <div className="flex flex-col px-5 py-5 overflow-y-auto pb-28 min-h-screen bg-midnight text-warm-white">
+    <div className="flex flex-col px-5 py-5 overflow-y-auto pb-28 min-h-full bg-midnight text-warm-white">
       {/* ───────────────────────────────────────────────────────────────────── */}
       {/* STEP 1: What's on your plate? (DUMP)                                 */}
       {/* ───────────────────────────────────────────────────────────────────── */}

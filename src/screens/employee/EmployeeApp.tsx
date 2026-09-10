@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
-import logoSrc from "@/imports/image-2.png"
 import UpcomingSessionCard, { UpcomingSessionData } from "@/components/UpcomingSessionCard"
 import BaselineMSI from "./BaselineMSI"
 import StressDriverFlow from "./StressDriverFlow"
@@ -70,7 +69,7 @@ function BottomNav({ active, onNav }: { active: string; onNav: (s: Screen) => vo
   const homeGroup  = ["my-stress", "checkin-1", "checkin-2", "checkin-3", "driver", "result", "recommended", "baseline-msi", "stress-cause", "msi-meaning", "profile", "settings", "listener-connect", "listener-schedule", "notifications"]
 
   return (
-    <div className="absolute bottom-0 left-0 right-0 z-50">
+    <div className="sticky bottom-0 left-0 right-0 z-50 w-full mt-auto">
       {/* Soft fade upward */}
       <div className="h-6 bg-gradient-to-t from-midnight/90 to-transparent pointer-events-none" />
       <div className="bg-midnight/92 backdrop-blur-xl">
@@ -2823,8 +2822,10 @@ function MySessionsScreen({ onBack, onNav }: { onBack: () => void; onNav: (s: Sc
     const durMins = Number(s.durationMinutes || s.duration || 10)
     const endMs = s.endTimestamp ? Number(s.endTimestamp) : (startMs ? startMs + durMins * 60 * 1000 : null)
 
-    if (startMs !== null && now < startMs) {
-      setSessionAlert(`Your session will start at ${s.startTime || s.time}. Please wait.`)
+    // Allow entry up to 5 minutes (300,000 ms) before session start
+    const fiveMinutesMs = 5 * 60 * 1000
+    if (startMs !== null && now < (startMs - fiveMinutesMs)) {
+      setSessionAlert(`Your session will be available 5 minutes before ${s.startTime || s.time}. Please wait.`)
       return
     }
 
@@ -2904,19 +2905,20 @@ function MySessionsScreen({ onBack, onNav }: { onBack: () => void; onNav: (s: Sc
             const startMs = s.startTimestamp ? Number(s.startTimestamp) : null
             const durMins = Number(s.durationMinutes || s.duration || 10)
             const endMs = s.endTimestamp ? Number(s.endTimestamp) : (startMs ? startMs + durMins * 60 * 1000 : null)
-            const isBefore = startMs !== null && now < startMs
+            const fiveMinutesMs = 5 * 60 * 1000
+            const isBefore = startMs !== null && now < (startMs - fiveMinutesMs)
             const isEnded = endMs !== null && now > endMs && s.status !== "In Progress"
 
             let countdownStr = ""
             if (isBefore && startMs !== null) {
-              const diffSec = Math.max(0, Math.floor((startMs - now) / 1000))
+              const diffSec = Math.max(0, Math.floor((startMs - fiveMinutesMs - now) / 1000))
               const m = Math.floor(diffSec / 60)
               const sec = diffSec % 60
               countdownStr = `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`
             }
 
             return (
-              <div key={s.id || s.sessionId} className="card-base p-4 border border-border-p hover:border-border-s transition-all">
+              <div key={s.id || s.sessionId} className="card-base p-4 border border-border-p hover:border-border-s transition-all relative">
                 <div className="flex justify-between items-start mb-2">
                   <div>
                     <p className="text-sm font-semibold text-warm-white flex items-center gap-2">
@@ -2935,35 +2937,42 @@ function MySessionsScreen({ onBack, onNav }: { onBack: () => void; onNav: (s: Sc
                   </span>
                 </div>
 
-                <div className="flex justify-between items-center text-xs text-text-muted pt-2 border-t border-border-p">
+                <div className="flex justify-between items-center text-xs text-text-muted pt-2 border-t border-border-p gap-2 flex-wrap sm:flex-nowrap">
                   <span className="font-mono text-[11px]">Client ID: {s.clientId}</span>
-                  <div className="flex gap-2 items-center">
+                  <div className="flex gap-2 items-center flex-wrap sm:flex-nowrap">
                     {tab === "upcoming" && (
                       <>
                         <button
+                          type="button"
                           onClick={() => handleCancelSession(s.sessionId || s.id)}
-                          className="text-[11px] text-c-critical/80 hover:text-c-critical px-2 py-1 rounded cursor-pointer"
+                          className="text-[11px] text-c-critical/80 hover:text-c-critical px-2.5 py-1.5 rounded cursor-pointer min-h-[36px] flex items-center pointer-events-auto touch-manipulation select-none"
                         >
                           Cancel
                         </button>
                         {isBefore ? (
                           <button
-                            onClick={() => handleEnterSession(s)}
-                            className="bg-white/5 border border-white/10 text-text-muted text-[11px] px-3 py-1 rounded-lg cursor-not-allowed opacity-75"
-                            title={`Session starts at ${s.startTime || s.time}`}
+                            type="button"
+                            disabled
+                            className="bg-white/5 border border-white/10 text-text-muted text-[11px] font-mono px-3 py-1.5 rounded-xl cursor-not-allowed opacity-75 min-h-[38px] flex items-center gap-1.5"
+                            title={`Session available 5 minutes before ${s.startTime || s.time}`}
                           >
-                            Starts in {countdownStr}
+                            <span>Starts in {countdownStr}</span>
                           </button>
                         ) : isEnded ? (
-                          <span className="text-[11px] text-text-muted px-2 py-1 bg-white/5 border border-white/10 rounded-lg">
+                          <span className="text-[11px] text-text-muted px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-xl min-h-[36px] flex items-center">
                             Session completed
                           </span>
                         ) : (
                           <button
+                            type="button"
                             onClick={() => handleEnterSession(s)}
-                            className="btn-primary text-[11px] px-3 py-1 rounded-lg cursor-pointer animate-pulse"
+                            className="btn-primary text-xs font-semibold px-4 py-2 rounded-xl cursor-pointer shadow-md shadow-purple-core/25 animate-pulse active:scale-95 transition-all min-h-[42px] min-w-[110px] flex items-center justify-center gap-1.5 pointer-events-auto touch-manipulation select-none"
                           >
-                            Enter Session
+                            <svg className="w-3.5 h-3.5 text-warm-white flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <span>Enter Session</span>
                           </button>
                         )}
                       </>
@@ -3803,6 +3812,40 @@ function ProfileScreen({ onBack, onNav }: { onBack: () => void; onNav: (s: Scree
   const [formArrangement, setFormArrangement] = useState("")
   const [formWorkload, setFormWorkload] = useState("")
 
+  // Delete account state
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState("")
+
+  async function handleDeleteAccount() {
+    setDeleting(true)
+    setDeleteError("")
+    try {
+      const token = localStorage.getItem("cq_token")
+      const res = await fetch("/api/employee/account", {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        // Clear all employee-specific storage
+        localStorage.clear()
+        sessionStorage.clear()
+        // Inform user and redirect to login
+        alert("Your account has been deleted successfully.")
+        window.location.href = "/company-login"
+      } else {
+        setDeleteError(data.message || "Failed to delete account. Please try again.")
+      }
+    } catch {
+      setDeleteError("Connection error while attempting to delete account.")
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   function loadProfileData() {
     const token = localStorage.getItem("cq_token")
     if (!token) return
@@ -3917,7 +3960,7 @@ function ProfileScreen({ onBack, onNav }: { onBack: () => void; onNav: (s: Scree
   ]
 
   return (
-    <div className="flex-1 flex flex-col pb-28 overflow-y-auto">
+    <div className="flex-1 flex flex-col pb-36 overflow-y-auto">
       {/* Header */}
       <div className="flex items-center justify-between px-5 pt-5 pb-4 flex-shrink-0">
         <button
@@ -4020,7 +4063,96 @@ function ProfileScreen({ onBack, onNav }: { onBack: () => void; onNav: (s: Scree
             </svg>
           </button>
         </div>
+
+        {/* Danger Zone / Delete Account */}
+        <div className="pt-3 pb-8 space-y-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-c-critical/80">Danger Zone</p>
+          <button
+            type="button"
+            onClick={() => {
+              setDeleteError("")
+              setDeleteModalOpen(true)
+            }}
+            className="w-full flex items-center justify-between px-4 py-3.5 rounded-2xl border border-c-critical/25 bg-c-critical/8 hover:bg-c-critical/15 hover:border-c-critical/40 transition-all text-left cursor-pointer min-h-[48px] touch-manipulation pointer-events-auto"
+          >
+            <div className="flex items-center gap-3">
+              <svg className="w-4 h-4 text-c-critical/80 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              <div>
+                <span className="text-sm font-semibold text-c-critical">Delete Account</span>
+                <p className="text-[11px] text-text-muted">Permanently remove your account and personal records</p>
+              </div>
+            </div>
+            <svg className="w-4 h-4 text-c-critical/60" fill="none" viewBox="0 0 16 16">
+              <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        </div>
       </div>
+
+      {/* Delete Account Confirmation Modal */}
+      {deleteModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+          <div className="card-base w-full max-w-sm p-6 space-y-4 border border-c-critical/30 shadow-2xl relative">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-c-critical/15 border border-c-critical/30 flex items-center justify-center flex-shrink-0 text-c-critical">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-warm-white leading-snug">Delete your account?</h3>
+                <p className="text-xs text-text-muted">Permanent action</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-text-secondary leading-relaxed">
+              This will permanently delete your CortiQuant account and associated personal data. This action cannot be undone.
+            </p>
+
+            {deleteError && (
+              <div className="p-3 rounded-xl bg-c-critical/15 border border-c-critical/30 text-c-critical text-xs">
+                {deleteError}
+              </div>
+            )}
+
+            <div className="flex gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!deleting) {
+                    setDeleteModalOpen(false)
+                    setDeleteError("")
+                  }
+                }}
+                disabled={deleting}
+                className="flex-1 py-3 px-4 rounded-xl border border-border-p bg-surface text-text-muted hover:text-warm-white text-xs font-semibold cursor-pointer transition-colors min-h-[44px] flex items-center justify-center"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteAccount}
+                disabled={deleting}
+                className="flex-1 py-3 px-4 rounded-xl bg-c-critical hover:bg-red-600 active:bg-red-700 text-white text-xs font-semibold cursor-pointer transition-all shadow-md shadow-c-critical/30 min-h-[44px] flex items-center justify-center gap-1.5 disabled:opacity-50"
+              >
+                {deleting ? (
+                  <>
+                    <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                    </svg>
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <span>Delete Account</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Edit Profile Modal */}
       {editOpen && (
@@ -4348,25 +4480,10 @@ export default function EmployeeApp({ initialScreen = "home" }: { initialScreen?
   const isFullscreen = screen === "reset-active"
 
   return (
-    <div className="flex justify-center items-start min-h-full bg-midnight sm:py-8">
-      <div className="relative w-full h-[100dvh] sm:max-w-[390px] sm:h-[812px] bg-midnight sm:rounded-[32px] sm:border border-border-p overflow-hidden sm:shadow-2xl flex flex-col">
-        {/* Status bar */}
-        {!isFullscreen && (
-          <div className="flex items-center justify-between px-5 pt-4 pb-2 flex-shrink-0">
-            <img src={logoSrc} alt="CortiQuant" className="h-6 object-contain" />
-            <div className="flex items-center gap-2">
-              <div className="flex gap-0.5 items-end">
-                {[1, 2, 3, 4].map((b) => (
-                  <div key={b} className="w-0.5 rounded-full bg-text-muted" style={{ height: `${b * 3}px`, opacity: b <= 3 ? 1 : 0.3 }} />
-                ))}
-              </div>
-              <span className="text-xs text-text-muted font-mono-data">87%</span>
-            </div>
-          </div>
-        )}
-
+    <div className="flex justify-center items-start min-h-full w-full bg-midnight">
+      <div className="relative w-full max-w-xl md:max-w-2xl lg:max-w-3xl min-h-full bg-midnight flex flex-col">
         {/* Screen content */}
-        <div className="flex-1 min-h-0 flex flex-col overflow-hidden relative">
+        <div className="flex-1 flex flex-col relative w-full">
           {screen === "home" && <HomeScreen onNav={setScreen} />}
           {screen === "baseline-msi" && <BaselineMSI onComplete={() => setScreen("home")} onBack={() => setScreen("home")} />}
           {screen === "stress-cause" && <StressDriverFlow msi={appCurrentMsi} onBack={() => setScreen("home")} onNav={(s) => setScreen(s as Screen)} />}

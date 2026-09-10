@@ -3,11 +3,116 @@ const router = express.Router()
 const User = require("../models/User")
 const CorporateOnboarding = require("../models/CorporateOnboarding")
 const Assessment = require("../models/Assessment")
-const { requireActiveEmployee } = require("../middleware/auth")
+const { requireActiveEmployee, requireEmployee } = require("../middleware/auth")
 const { logActivity } = require("../services/activityService")
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GET /api/employee/profile
+// DELETE /api/employee/account
+//
+// Protected — permanently deletes the authenticated employee's account
+// and cleans up all associated personal data safely.
+// ─────────────────────────────────────────────────────────────────────────────
+router.delete("/account", requireEmployee, async (req, res) => {
+  try {
+    const userId = req.user._id
+    const user = await User.findById(userId)
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User account not found." })
+    }
+
+    const orgId = user.organisationId ? user.organisationId.toString() : null
+    const clientId = user.clientId
+
+    // Load models
+    const RootCauseAssessment = require("../models/RootCauseAssessment")
+    const Recommendation = require("../models/Recommendation")
+    const InterventionSession = require("../models/InterventionSession")
+    const Notification = require("../models/Notification")
+    const ListenerSession = require("../models/ListenerSession")
+    const ListenerMessage = require("../models/ListenerMessage")
+
+    // 1. Delete Corporate Onboarding record
+    await CorporateOnboarding.deleteMany({ userId }).catch((err) => {
+      console.warn("[DELETE-ACCOUNT] Onboarding deletion warning:", err.message)
+    })
+
+    // 2. Delete Assessments (daily check-ins, baseline MSI, etc.)
+    await Assessment.deleteMany({ userId }).catch((err) => {
+      console.warn("[DELETE-ACCOUNT] Assessment deletion warning:", err.message)
+    })
+
+    // 3. Delete RootCauseAssessments
+    await RootCauseAssessment.deleteMany({ userId }).catch((err) => {
+      console.warn("[DELETE-ACCOUNT] Root cause assessment deletion warning:", err.message)
+    })
+
+    // 4. Delete Recommendations
+    await Recommendation.deleteMany({ employeeId: userId }).catch((err) => {
+      console.warn("[DELETE-ACCOUNT] Recommendation deletion warning:", err.message)
+    })
+
+    // 5. Delete Intervention Sessions
+    await InterventionSession.deleteMany({ employeeId: userId }).catch((err) => {
+      console.warn("[DELETE-ACCOUNT] Intervention sessions deletion warning:", err.message)
+    })
+
+    // 6. Delete Notifications
+    await Notification.deleteMany({ userId }).catch((err) => {
+      console.warn("[DELETE-ACCOUNT] Notifications deletion warning:", err.message)
+    })
+
+    // 7. Handle Listener Sessions & Messages safely:
+    // Find peer sessions booked by this employee
+    const sessions = await ListenerSession.find({ employeeId: userId }).select("_id").lean().catch(() => [])
+    if (sessions && sessions.length > 0) {
+      const sessionIds = sessions.map((s) => s._id)
+      // Delete chat messages associated with these sessions
+      await ListenerMessage.deleteMany({ sessionId: { $in: sessionIds } }).catch((err) => {
+        console.warn("[DELETE-ACCOUNT] Listener messages deletion warning:", err.message)
+      })
+      // Delete or anonymize listener sessions
+      await ListenerSession.deleteMany({ employeeId: userId }).catch((err) => {
+        console.warn("[DELETE-ACCOUNT] Listener sessions deletion warning:", err.message)
+      })
+    }
+    // Also clean up any messages where senderId is this user
+    await ListenerMessage.deleteMany({ senderId: userId }).catch((err) => {
+      console.warn("[DELETE-ACCOUNT] Extra messages deletion warning:", err.message)
+    })
+
+    // 8. Audit log for compliance before deleting User document (preserves audit integrity without personal info)
+    await logActivity({
+      req,
+      user: {
+        _id: userId,
+        name: "Anonymous Former Employee",
+        email: "deleted@cortiquant.com",
+        role: "employee",
+      },
+      action: "Account Deleted",
+      status: "Success",
+      entityType: "User",
+      entityId: userId,
+      details: `Employee account deleted by user. All associated personal records were purged.`,
+    }).catch(() => {})
+
+    // 9. Delete the User record
+    await User.findByIdAndDelete(userId)
+
+    return res.status(200).json({
+      success: true,
+      message: "Your account has been deleted successfully.",
+    })
+  } catch (err) {
+    console.error("[EMPLOYEE] DELETE /account error:", err.message)
+    return res.status(500).json({
+      success: false,
+      message: "Server error deleting account. Please try again or contact support.",
+    })
+  }
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Returns real MongoDB profile details for the authenticated employee.
 // ─────────────────────────────────────────────────────────────────────────────
 router.get("/profile", requireActiveEmployee, async (req, res) => {

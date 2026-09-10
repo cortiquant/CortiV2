@@ -111,9 +111,10 @@ export default function UpcomingSessionCard({
   const durMins = Number(session.durationMinutes || session.duration || 10)
   const endMs = session.endTimestamp ? Number(session.endTimestamp) : (startMs ? startMs + durMins * 60 * 1000 : null)
 
-  const isBeforeStart = startMs !== null && now < startMs
+  const fiveMinutesMs = 5 * 60 * 1000
+  const isBeforeStart = startMs !== null && now < (startMs - fiveMinutesMs)
   const isExpired = endMs !== null && now > endMs
-  const isActive = (startMs !== null && endMs !== null && now >= startMs && now <= endMs) || session.status === "ACTIVE" || session.status === "In Progress"
+  const isActive = (startMs !== null && endMs !== null && now >= (startMs - fiveMinutesMs) && now <= endMs) || session.status === "ACTIVE" || session.status === "In Progress"
 
   // When current time > endTime: remove card (or show clean listener empty state)
   if (isExpired && session.status !== "In Progress" && session.status !== "ACTIVE") {
@@ -131,17 +132,20 @@ export default function UpcomingSessionCard({
   // Format countdown string: "Starts in MM:SS"
   let countdownText = ""
   if (isBeforeStart && startMs !== null) {
-    const diffSec = Math.max(0, Math.floor((startMs - now) / 1000))
+    const diffSec = Math.max(0, Math.floor((startMs - fiveMinutesMs - now) / 1000))
     const minutes = Math.floor(diffSec / 60)
     const seconds = diffSec % 60
     countdownText = `Starts in ${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
   }
 
-  const handleEnterSession = () => {
+  const handleEnterSession = (e?: React.MouseEvent | React.TouchEvent) => {
+    if (e) {
+      e.stopPropagation()
+    }
     const targetSessionId = session.sessionId || session.id
     if (isBeforeStart) {
       const displayTime = session.startTime || session.time
-      setAlertMessage(`Your session will start at ${displayTime}. Please wait.`)
+      setAlertMessage(`Your session will be available 5 minutes before ${displayTime}. Please wait.`)
       return
     }
 
@@ -250,11 +254,12 @@ export default function UpcomingSessionCard({
           When current time >= startTime: Enabled button with "Enter Session"
           When current time > endTime: Card disappears automatically
       */}
-      <div className="w-full">
+      <div className="w-full relative z-10">
         {isBeforeStart ? (
           <button
+            type="button"
             disabled
-            className="w-full py-3 rounded-xl text-sm font-semibold bg-white/5 border border-white/10 text-text-muted font-mono cursor-not-allowed flex items-center justify-center gap-2 opacity-80"
+            className="w-full min-h-[48px] py-3 px-4 rounded-xl text-sm font-semibold bg-white/5 border border-white/10 text-text-muted font-mono cursor-not-allowed flex items-center justify-center gap-2 opacity-80"
           >
             <svg className="w-4 h-4 text-lavender-soft animate-spin" style={{ animationDuration: "3s" }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" strokeDasharray="14 14" />
@@ -263,14 +268,15 @@ export default function UpcomingSessionCard({
           </button>
         ) : (
           <button
+            type="button"
             onClick={handleEnterSession}
-            className="w-full btn-primary py-3 rounded-xl text-sm font-semibold cursor-pointer shadow-lg shadow-purple-core/20 animate-pulse hover:brightness-110 transition-all flex items-center justify-center gap-2"
+            className="w-full min-h-[48px] btn-primary py-3 px-4 rounded-xl text-sm font-semibold cursor-pointer shadow-lg shadow-purple-core/20 animate-pulse hover:brightness-110 active:scale-[0.99] transition-all flex items-center justify-center gap-2 pointer-events-auto touch-manipulation select-none"
           >
-            <svg className="w-4 h-4 text-warm-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="w-4 h-4 text-warm-white flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            Enter Session
+            <span>Enter Session</span>
           </button>
         )}
       </div>
