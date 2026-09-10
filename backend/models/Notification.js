@@ -5,7 +5,24 @@ const notificationSchema = new mongoose.Schema(
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      required: false,
+      index: true,
+    },
+    recipientId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: false,
+      index: true,
+    },
+    organisationId: {
+      type: mongoose.Schema.Types.Mixed,
+      ref: "Organisation",
+      required: false,
+      index: true,
+    },
+    employeeId: {
+      type: mongoose.Schema.Types.Mixed,
+      required: false,
       index: true,
     },
     type: {
@@ -13,14 +30,23 @@ const notificationSchema = new mongoose.Schema(
       default: "session_reminder",
       index: true,
     },
+    status: {
+      type: String,
+      default: "SENT",
+      index: true,
+    },
+    sentAt: {
+      type: Date,
+      default: Date.now,
+    },
     title: {
       type: String,
-      required: true,
+      required: false,
       trim: true,
     },
     message: {
       type: String,
-      required: true,
+      required: false,
       trim: true,
     },
     sessionId: {

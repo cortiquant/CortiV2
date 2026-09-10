@@ -5,6 +5,7 @@ const jwt = require("jsonwebtoken")
 const User = require("../models/User")
 const Organisation = require("../models/Organisation")
 const { logActivity } = require("../services/activityService")
+const { sendEmployeeApprovalNotification } = require("../services/notificationService")
 const { signToken, requireAuth, requireHR } = require("../middleware/auth")
 
 // ── Utility: generate an employeeId like "EMP-1001" ──────────────────────────
@@ -125,7 +126,7 @@ router.post("/verify-organisation-code", async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.post("/employee/signup", async (req, res) => {
   try {
-    const { name, username, password, privacyConsent, participantConsent, organisationCode, orgCode } = req.body
+    const { name, username, email, password, privacyConsent, participantConsent, organisationCode, orgCode, status } = req.body
 
     const codeToSearch = (organisationCode || orgCode || "").trim().toUpperCase()
 
@@ -159,6 +160,8 @@ router.post("/employee/signup", async (req, res) => {
         message: "Username must be at least 3 characters long.",
       })
     }
+
+    const cleanEmail = email && email.trim() ? email.trim().toLowerCase() : undefined
 
     // ── Validate password strength ────────────────────────────────────────
     const pwRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/
@@ -201,13 +204,15 @@ router.post("/employee/signup", async (req, res) => {
     // ── Hash password and create user ─────────────────────────────────────
     const passwordHash = await User.hashPassword(password)
     const now = new Date()
+    const initialStatus = status === "PendingApproval" || status === "Pending" ? "PendingApproval" : "OnboardingRequired"
 
     const user = await User.create({
       name: name.trim(),
       username: cleanUsername,
+      email: cleanEmail,
       passwordHash,
       role: "employee",
-      status: "OnboardingRequired",
+      status: initialStatus,
       organisationId: org._id,
       organisationCode: org.organisationCode || org.code,
       privacyConsent: true,
@@ -216,7 +221,14 @@ router.post("/employee/signup", async (req, res) => {
       participantConsentAt: now,
     })
 
-    console.log(`[AUTH] Employee signup: ${user.username} → org ${user.organisationCode} (OnboardingRequired)`)
+    console.log(`[AUTH] Employee signup: ${user.username} → org ${user.organisationCode} (${initialStatus})`)
+
+    // If account was created with PendingApproval status, notify HR immediately
+    if (initialStatus === "PendingApproval") {
+      sendEmployeeApprovalNotification(user).catch((notifErr) => {
+        console.error("[AUTH] Non-fatal notification error on signup:", notifErr.message)
+      })
+    }
 
     await logActivity({
       req,
@@ -372,7 +384,17 @@ router.post("/employee/login", async (req, res) => {
       })
     }
 
-    // 4. Approved / Active account
+    // 4. Disabled account
+    if (user.status === "Disabled" || user.status === "Inactive") {
+      console.log(`[AUTH] Employee login blocked — account disabled: ${identifier}`)
+      return res.status(403).json({
+        success: false,
+        status: "Disabled",
+        message: "Your employee account has been disabled. Please contact your HR administrator.",
+      })
+    }
+
+    // 5. Approved / Active account
     console.log(`[AUTH] Employee login successful: ${identifier}`)
 
     await logActivity({
@@ -468,6 +490,14 @@ router.post("/hr/login", async (req, res) => {
     }
 
     // ── Password verification ─────────────────────────────────────────────
+    if (!user.passwordHash) {
+      console.log(`[AUTH] HR login failed — no passwordHash set: ${email}`)
+      return res.status(401).json({
+        success: false,
+        message: "No password has been set for this account. Please contact Administrator to set up your password.",
+      })
+    }
+
     const isValid = await user.comparePassword(password)
     if (!isValid) {
       console.log(`[AUTH] HR login failed — wrong password: ${email}`)
@@ -516,8 +546,11 @@ router.post("/hr/login", async (req, res) => {
       token,
     })
   } catch (err) {
-    console.error("[AUTH] HR login error:", err.message)
-    res.status(500).json({ success: false, message: "Server error during login." })
+    console.error("[AUTH] HR login error:", err)
+    res.status(500).json({
+      success: false,
+      message: err.message || "Server error during login.",
+    })
   }
 })
 
@@ -765,58 +798,29 @@ async function handleHRQueue(req, res) {
     todayEnd.setHours(23, 59, 59, 999)
 
     // 1. Pending requests: status in Pending/PendingApproval AND onboarding completed
-    const pendingCount = await User.countDocuments({
+    const pendingRequests = await User.countDocuments({
       ...baseOrgFilter,
       status: { $in: ["PendingApproval", "Pending"] },
       onboardingCompleted: true,
     })
 
-    // 2. Approved today
-    const approvedTodayUsers = await User.find({
+    // 2. Approved and active employees in this organisation
+    const approvedEmployees = await User.countDocuments({
       ...baseOrgFilter,
       status: { $in: ["Approved", "Active"] },
-      approvedAt: { $gte: todayStart, $lte: todayEnd },
-    }).select("approvedAt createdAt onboardingCompleted")
+    })
 
-    const approvedToday = approvedTodayUsers.length
+    // 3. Total employees registered under the organisation (all statuses: active, disabled, pending, etc.)
+    const totalEmployees = await User.countDocuments({
+      ...baseOrgFilter,
+    })
 
-    // 3. Rejected today
+    // 4. Rejected today
     const rejectedToday = await User.countDocuments({
       ...baseOrgFilter,
       status: "Rejected",
       rejectedAt: { $gte: todayStart, $lte: todayEnd },
     })
-
-    // 4. Avg approval time (hours): average of (approvedAt - onboardingCompletedAt or createdAt)
-    let avgApprovalTimeHours = "0.0h"
-    if (approvedTodayUsers.length > 0) {
-      // Find onboarding completion timestamps for these users
-      const approvedIds = approvedTodayUsers.map((u) => u._id)
-      const approvedOnbs = await CorporateOnboarding.find({ userId: { $in: approvedIds } })
-      const appOnbMap = new Map(approvedOnbs.map((o) => [String(o.userId), o]))
-
-      let totalDurationMs = 0
-      let validCount = 0
-
-      for (const u of approvedTodayUsers) {
-        if (u.approvedAt) {
-          const onb = appOnbMap.get(String(u._id))
-          const startTime = onb?.completedAt || u.createdAt
-          if (startTime) {
-            const diff = new Date(u.approvedAt).getTime() - new Date(startTime).getTime()
-            if (diff >= 0) {
-              totalDurationMs += diff
-              validCount++
-            }
-          }
-        }
-      }
-
-      if (validCount > 0) {
-        const avgHours = totalDurationMs / validCount / (1000 * 60 * 60)
-        avgApprovalTimeHours = `${avgHours.toFixed(1)}h`
-      }
-    }
 
     const data = employees.map((e) => {
       const onb = onbMap.get(String(e._id))
@@ -828,6 +832,7 @@ async function handleHRQueue(req, res) {
       let displayStatus = "pending"
       if (e.status === "Approved" || e.status === "Active") displayStatus = "approved"
       else if (e.status === "Rejected") displayStatus = "rejected"
+      else if (e.status === "Disabled" || e.status === "Inactive") displayStatus = "disabled"
       else if (e.status === "OnboardingRequired") displayStatus = "onboarding"
 
       return {
@@ -859,10 +864,13 @@ async function handleHRQueue(req, res) {
       success: true,
       count: data.length,
       stats: {
-        pendingCount,
-        approvedToday,
+        totalEmployees,
+        approvedEmployees,
+        pendingRequests,
         rejectedToday,
-        avgApprovalTimeHours,
+        // Legacy keys for seamless backwards compatibility
+        pendingCount: pendingRequests,
+        approvedToday: approvedEmployees,
       },
       data,
     })
@@ -1011,5 +1019,219 @@ router.post("/hr/reject/:userId", requireHR, handleRejectEmployee)
 router.post("/reject/:userId", requireHR, handleRejectEmployee)
 router.patch("/hr/employees/:employeeId/reject", requireHR, handleRejectEmployee)
 router.patch("/employees/:employeeId/reject", requireHR, handleRejectEmployee)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Employee Management APIs (HR / Admin protected)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Handler: Fetch all employees belonging to logged-in HR organisation.
+async function handleGetHREmployees(req, res) {
+  try {
+    const hrOrgId = req.user.organisationId
+    const baseOrgFilter = {
+      role: { $in: ["employee", "Employee", "EMPLOYEE"] },
+      $or: [
+        { organisationId: hrOrgId },
+        { organisationId: String(hrOrgId) },
+        ...(mongoose.isValidObjectId(hrOrgId) ? [{ organisationId: new mongoose.Types.ObjectId(hrOrgId) }] : []),
+      ],
+    }
+
+    const employees = await User.find(baseOrgFilter).sort({ createdAt: -1 })
+    const userIds = employees.map((e) => e._id)
+
+    // Corporate onboarding records
+    const CorporateOnboarding = require("../models/CorporateOnboarding")
+    const onbRecords = await CorporateOnboarding.find({ userId: { $in: userIds } })
+    const onbMap = new Map(onbRecords.map((o) => [String(o.userId), o]))
+
+    // Check latest assessments to provide real last activity date
+    const Assessment = require("../models/Assessment")
+    const latestAssessments = await Assessment.aggregate([
+      { $match: { userId: { $in: userIds } } },
+      { $sort: { createdAt: -1 } },
+      { $group: { _id: "$userId", lastAssessmentAt: { $first: "$createdAt" } } },
+    ])
+    const assessmentMap = new Map(latestAssessments.map((a) => [String(a._id), a.lastAssessmentAt]))
+
+    const orgDoc = await Organisation.findOne({
+      $or: [
+        { _id: mongoose.isValidObjectId(hrOrgId) ? hrOrgId : null },
+        { organisationId: hrOrgId },
+      ],
+    })
+    const orgName = orgDoc ? orgDoc.name : "Organisation"
+
+    const data = employees.map((e) => {
+      const onb = onbMap.get(String(e._id))
+      const dept = e.department || onb?.participantProfile?.D3 || "Unassigned"
+      const deptId = e.departmentId || null
+
+      let displayStatus = "pending"
+      if (e.status === "Approved" || e.status === "Active") displayStatus = "Active"
+      else if (e.status === "Disabled" || e.status === "Inactive") displayStatus = "Disabled"
+      else if (e.status === "Rejected") displayStatus = "Rejected"
+      else if (e.status === "OnboardingRequired") displayStatus = "Onboarding"
+      else displayStatus = e.status || "Pending"
+
+      const lastActivity = assessmentMap.get(String(e._id)) || e.updatedAt || e.createdAt
+
+      return {
+        id: String(e._id),
+        _id: String(e._id),
+        employeeId: e.employeeId || "Pending ID",
+        name: e.name,
+        username: e.username || "—",
+        email: e.email || "—",
+        department: dept,
+        departmentId: deptId,
+        organisation: orgName,
+        status: displayStatus,
+        rawStatus: e.status,
+        joinedDate: e.approvedAt || e.createdAt,
+        createdAt: e.createdAt,
+        approvedAt: e.approvedAt || null,
+        lastActivity: lastActivity,
+        lastActiveAt: lastActivity,
+        onboardingStatus: e.onboardingCompleted || onb?.onboardingCompleted ? "Completed" : "Pending",
+      }
+    })
+
+    return res.status(200).json({
+      success: true,
+      count: data.length,
+      employees: data,
+    })
+  } catch (err) {
+    console.error("[HR EMPLOYEES] Fetch error:", err.message)
+    res.status(500).json({ success: false, message: "Server error fetching employees list." })
+  }
+}
+
+// Handler: Disable employee account. Keeps employee data and activity history for compliance.
+async function handleToggleDisableEmployee(req, res) {
+  try {
+    const idParam = req.params.id
+    const isObjId = mongoose.isValidObjectId(idParam)
+
+    const employee = await User.findOne({
+      role: { $in: ["employee", "Employee", "EMPLOYEE"] },
+      $or: [
+        ...(isObjId ? [{ _id: idParam }] : []),
+        { employeeId: idParam },
+      ],
+    })
+
+    if (!employee) {
+      return res.status(404).json({ success: false, message: "Employee not found." })
+    }
+
+    // Security: cross-organisation isolation check
+    const empOrg = String(employee.organisationId)
+    const hrOrg = String(req.user.organisationId)
+    if (empOrg !== hrOrg) {
+      return res.status(403).json({ success: false, message: "Access denied: employee does not belong to your organisation." })
+    }
+
+    // Toggle or set to Disabled
+    const nextStatus = employee.status === "Disabled" ? "Active" : "Disabled"
+    employee.status = nextStatus
+    await employee.save()
+
+    console.log(`[HR EMPLOYEES] Status updated for ${employee.username || employee.email} → ${nextStatus}`)
+
+    await logActivity({
+      req,
+      user: req.user,
+      action: nextStatus === "Disabled" ? "Disabled Employee" : "Enabled Employee",
+      status: "Success",
+      organisationId: req.user.organisationId,
+      entityType: "User",
+      entityId: employee._id,
+      details: `${nextStatus === "Disabled" ? "Disabled" : "Re-enabled"} employee account: ${employee.name} (${employee.employeeId || employee.username || employee.email})`,
+    })
+
+    return res.status(200).json({
+      success: true,
+      message: `Employee account ${nextStatus === "Disabled" ? "disabled" : "enabled"} successfully.`,
+      employee: {
+        id: String(employee._id),
+        employeeId: employee.employeeId,
+        name: employee.name,
+        status: nextStatus,
+      },
+    })
+  } catch (err) {
+    console.error("[HR EMPLOYEES] Disable error:", err.message)
+    res.status(500).json({ success: false, message: "Server error updating employee status." })
+  }
+}
+
+// Handler: Delete employee access while preserving activity logs and historical compliance records.
+async function handleDeleteHREmployee(req, res) {
+  try {
+    const idParam = req.params.id
+    const isObjId = mongoose.isValidObjectId(idParam)
+
+    const employee = await User.findOne({
+      role: { $in: ["employee", "Employee", "EMPLOYEE"] },
+      $or: [
+        ...(isObjId ? [{ _id: idParam }] : []),
+        { employeeId: idParam },
+      ],
+    })
+
+    if (!employee) {
+      return res.status(404).json({ success: false, message: "Employee not found." })
+    }
+
+    // Security: cross-organisation check
+    const empOrg = String(employee.organisationId)
+    const hrOrg = String(req.user.organisationId)
+    if (empOrg !== hrOrg) {
+      return res.status(403).json({ success: false, message: "Access denied: employee does not belong to your organisation." })
+    }
+
+    const employeeId = employee._id
+    const employeeName = employee.name
+    const empCode = employee.employeeId || employee.username || employee.email
+
+    // Preserve activity logs and audit integrity before deleting User record
+    await logActivity({
+      req,
+      user: req.user,
+      action: "Deleted Employee",
+      status: "Success",
+      organisationId: req.user.organisationId,
+      entityType: "User",
+      entityId: employeeId,
+      details: `HR removed employee access: ${employeeName} (${empCode}). Historical records preserved.`,
+    })
+
+    // Remove employee record from User collection
+    await User.findByIdAndDelete(employeeId)
+
+    console.log(`[HR EMPLOYEES] Employee access removed: ${employeeName} (${empCode}) by HR ${req.user.email}`)
+
+    return res.status(200).json({
+      success: true,
+      message: `Employee ${employeeName} has been removed successfully.`,
+      id: String(employeeId),
+    })
+  } catch (err) {
+    console.error("[HR EMPLOYEES] Delete error:", err.message)
+    res.status(500).json({ success: false, message: "Server error removing employee." })
+  }
+}
+
+// Route registrations: support both /employees and /hr/employees under /api/hr and /api/auth
+router.get("/hr/employees", requireHR, handleGetHREmployees)
+router.get("/employees", requireHR, handleGetHREmployees)
+
+router.patch("/hr/employees/:id/disable", requireHR, handleToggleDisableEmployee)
+router.patch("/employees/:id/disable", requireHR, handleToggleDisableEmployee)
+
+router.delete("/hr/employees/:id", requireHR, handleDeleteHREmployee)
+router.delete("/employees/:id", requireHR, handleDeleteHREmployee)
 
 module.exports = router

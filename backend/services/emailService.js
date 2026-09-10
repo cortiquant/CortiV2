@@ -536,12 +536,188 @@ async function sendBookingConfirmationEmail({ listenerEmail, listenerName, date,
   }
 }
 
+/**
+ * Generates branded HTML template for employee approval request to HR
+ */
+function employeeApprovalRequestTemplate({ employeeName, email, department, employeeId, organisationName, requestedOn, reviewUrl }) {
+  const ctaUrl = reviewUrl || buildFrontendUrl("/hr/approval-queue")
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Employee Approval Request - CortiQuant</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0d0c1d; color: #f3f4f6;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="padding: 40px 20px; background-color: #0d0c1d;">
+    <tr>
+      <td align="center">
+        <table width="100%" max-width="600" cellpadding="0" cellspacing="0" style="max-width: 600px; background-color: #17152b; border: 1px solid rgba(139, 92, 246, 0.25); border-radius: 20px; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);">
+          <!-- Header with CortiQuant Branding -->
+          <tr>
+            <td style="background: linear-gradient(135deg, #701198 0%, #4a0d66 100%); padding: 32px 40px; text-align: left;">
+              <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">CortiQuant</h1>
+              <p style="color: rgba(255, 255, 255, 0.85); margin: 6px 0 0 0; font-size: 13px;">Mental Readiness & Workplace Performance Intelligence</p>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding: 40px;">
+              <p style="font-size: 16px; margin: 0 0 16px 0; color: #ffffff;">Hello HR Team,</p>
+              <p style="font-size: 14px; line-height: 24px; margin: 0 0 24px 0; color: #d1d5db;">
+                A new employee has requested access to your CortiQuant workspace.
+              </p>
+
+              <!-- Employee Details Card -->
+              <div style="background-color: #211e3b; border-radius: 14px; padding: 24px; margin-bottom: 32px; border: 1px solid rgba(139, 92, 246, 0.2);">
+                <p style="margin: 0 0 16px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #c4b5fd; font-weight: 700;">Employee Details</p>
+                <table width="100%" cellpadding="0" cellspacing="0" style="font-size: 14px; border-collapse: collapse;">
+                  <tr>
+                    <td style="padding: 8px 0; color: #9ca3af; width: 140px;">Name:</td>
+                    <td style="padding: 8px 0; font-weight: 600; color: #ffffff;">${employeeName}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; color: #9ca3af;">Email / Username:</td>
+                    <td style="padding: 8px 0; font-weight: 600; color: #ffffff;">${email}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; color: #9ca3af;">Department:</td>
+                    <td style="padding: 8px 0; font-weight: 600; color: #ffffff;">${department || "Unassigned"}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; color: #9ca3af;">Employee ID:</td>
+                    <td style="padding: 8px 0; font-weight: 600; color: #ffffff;">${employeeId || "Pending ID"}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; color: #9ca3af;">Organisation:</td>
+                    <td style="padding: 8px 0; font-weight: 600; color: #ffffff;">${organisationName}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; color: #9ca3af;">Requested On:</td>
+                    <td style="padding: 8px 0; font-weight: 600; color: #ffffff;">${requestedOn}</td>
+                  </tr>
+                </table>
+              </div>
+
+              <p style="font-size: 14px; line-height: 24px; margin: 0 0 28px 0; color: #d1d5db;">
+                Please review and approve or reject this request from the HR dashboard.
+              </p>
+
+              <!-- CTA Button -->
+              <table cellpadding="0" cellspacing="0" style="margin: 0 0 32px 0;">
+                <tr>
+                  <td align="center" style="border-radius: 12px; background: linear-gradient(135deg, #8b5cf6 0%, #701198 100%);">
+                    <a href="${ctaUrl}" target="_blank" style="display: inline-block; padding: 14px 32px; font-size: 14px; font-weight: 600; color: #ffffff; text-decoration: none; border-radius: 12px;">
+                      Review Approval Request
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Direct link fallback -->
+              <p style="font-size: 12px; line-height: 18px; color: #9ca3af; margin: 0; word-break: break-all;">
+                Or copy and paste this link into your browser:<br>
+                <a href="${ctaUrl}" style="color: #c4b5fd; text-decoration: underline;">${ctaUrl}</a>
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background-color: #121024; padding: 20px 40px; text-align: center; border-top: 1px solid rgba(139, 92, 246, 0.15);">
+              <p style="font-size: 12px; color: #6b7280; margin: 0;">
+                This is an automated notification from CortiQuant Workplace Performance Intelligence.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `
+}
+
+/**
+ * Sends an employee approval request email to an HR administrator.
+ */
+async function sendEmployeeApprovalRequestEmail({
+  hrEmail,
+  employeeName,
+  email,
+  department,
+  employeeId,
+  organisationName,
+  requestedOn,
+  reviewUrl,
+}) {
+  const transporter = getTransporter()
+  const fromAddress = process.env.EMAIL_FROM || process.env.SMTP_FROM || "CortiQuant <cortiquant@gmail.com>"
+  const subject = "New Employee Approval Request - CortiQuant"
+
+  const ctaUrl = reviewUrl || buildFrontendUrl("/hr/approval-queue")
+
+  const text = `Hello HR Team,
+
+A new employee has requested access to your CortiQuant workspace.
+
+Employee Details:
+
+Name: ${employeeName}
+Email: ${email}
+Department: ${department || "Unassigned"}
+Employee ID: ${employeeId || "Pending ID"}
+Organisation: ${organisationName}
+Requested On: ${requestedOn}
+
+Please review and approve or reject this request from the HR dashboard.
+
+Review Approval Request:
+${ctaUrl}
+`
+
+  const html = employeeApprovalRequestTemplate({
+    employeeName,
+    email,
+    department,
+    employeeId,
+    organisationName,
+    requestedOn,
+    reviewUrl: ctaUrl,
+  })
+
+  if (!transporter) {
+    console.warn(`[EMAIL MOCK] SMTP not configured. Would send employee approval request for ${employeeName} (${email}) to HR: ${hrEmail}`)
+    return { success: true, mocked: true }
+  }
+
+  try {
+    const info = await transporter.sendMail({
+      from: fromAddress,
+      to: hrEmail,
+      subject,
+      text,
+      html,
+    })
+    console.log(`[EMAIL] Employee approval request sent to HR ${hrEmail} for employee ${employeeName} (msgId: ${info.messageId})`)
+    return { success: true, messageId: info.messageId }
+  } catch (err) {
+    console.error(`[EMAIL] Failed sending employee approval request to ${hrEmail}:`, err.message)
+    return { success: false, error: err.message }
+  }
+}
+
 module.exports = {
   sendHRInvitation,
   sendListenerInvitation,
   sendTestEmail,
   sendListenerSessionReminder,
   sendBookingConfirmationEmail,
+  employeeApprovalRequestTemplate,
+  sendEmployeeApprovalRequestEmail,
   verifySMTP,
 }
 

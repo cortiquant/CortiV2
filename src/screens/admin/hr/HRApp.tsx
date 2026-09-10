@@ -14,7 +14,7 @@ import {
   Cell,
 } from "recharts"
 
-type HRScreen = "overview" | "workforce" | "teams" | "team-detail" | "interventions" | "reports" | "approval-queue" | "settings"
+type HRScreen = "overview" | "workforce" | "teams" | "team-detail" | "interventions" | "reports" | "approval-queue" | "employees" | "settings"
 
 // ── Data ──────────────────────────────────────────────────────────────────────
 
@@ -29,6 +29,7 @@ const NAV_ITEMS: { id: HRScreen; label: string; icon: string }[] = [
   { id: "interventions",  label: "Interventions",  icon: "◆" },
   { id: "reports",        label: "Reports",        icon: "▣" },
   { id: "approval-queue", label: "Approval Queue", icon: "◎" },
+  { id: "employees",      label: "Employees",      icon: "👥" },
   { id: "settings",       label: "Settings",       icon: "⚙" },
 ]
 
@@ -2530,19 +2531,19 @@ interface ApprovalRequest {
 }
 
 interface QueueStats {
-  pendingCount: number
-  approvedToday: number
+  totalEmployees: number
+  approvedEmployees: number
+  pendingRequests: number
   rejectedToday: number
-  avgApprovalTimeHours: string
 }
 
 function ApprovalQueueScreen() {
   const [requests, setRequests] = useState<ApprovalRequest[]>([])
   const [stats, setStats] = useState<QueueStats>({
-    pendingCount: 0,
-    approvedToday: 0,
+    totalEmployees: 0,
+    approvedEmployees: 0,
+    pendingRequests: 0,
     rejectedToday: 0,
-    avgApprovalTimeHours: "0.0h",
   })
   const [search, setSearch]     = useState("")
   const [filter, setFilter]     = useState<ApprovalStatus | "all">("pending")
@@ -2621,10 +2622,10 @@ function ApprovalQueueScreen() {
 
         if (data.stats) {
           setStats({
-            pendingCount: Number(data.stats.pendingCount || 0),
-            approvedToday: Number(data.stats.approvedToday || 0),
-            rejectedToday: Number(data.stats.rejectedToday || 0),
-            avgApprovalTimeHours: String(data.stats.avgApprovalTimeHours || "0.0h"),
+            totalEmployees: Number(data.stats.totalEmployees ?? data.stats.total ?? 0),
+            approvedEmployees: Number(data.stats.approvedEmployees ?? data.stats.approvedToday ?? 0),
+            pendingRequests: Number(data.stats.pendingRequests ?? data.stats.pendingCount ?? 0),
+            rejectedToday: Number(data.stats.rejectedToday ?? 0),
           })
         }
       }
@@ -2767,20 +2768,62 @@ function ApprovalQueueScreen() {
       </div>
 
       {/* KPI row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {[
-          { label: "Pending requests",   value: String(stats.pendingCount),       sub: "Requires review",            color: stats.pendingCount > 0 ? "text-c-warning" : "text-warm-white" },
-          { label: "Approved today",     value: String(stats.approvedToday),     sub: "Active workspace users",     color: stats.approvedToday > 0 ? "text-c-success" : "text-warm-white" },
+          { label: "Approved Employees", value: String(stats.approvedEmployees), sub: "Currently active employees", color: stats.approvedEmployees > 0 ? "text-c-success" : "text-warm-white" },
+          { label: "Total Employees",    value: String(stats.totalEmployees),    sub: "Employees in organisation",   color: "text-lavender-soft" },
+          { label: "Pending requests",   value: String(stats.pendingRequests),   sub: "Requires review",            color: stats.pendingRequests > 0 ? "text-c-warning" : "text-warm-white", badge: stats.pendingRequests > 0 },
           { label: "Rejected today",     value: String(stats.rejectedToday),     sub: "Workspace access denied",    color: stats.rejectedToday > 0 ? "text-c-critical" : "text-warm-white" },
-          { label: "Avg approval time",  value: stats.avgApprovalTimeHours,      sub: "Based on today's approvals", color: "text-lavender-soft" },
         ].map((k) => (
-          <div key={k.label} className="card-base p-5">
+          <div key={k.label} className={`card-base p-5 relative overflow-hidden transition-all ${k.badge ? "border-c-warning/40 bg-c-warning/5" : ""}`}>
+            {k.badge && (
+              <div className="absolute top-3 right-3 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-c-warning/15 border border-c-warning/30">
+                <div className="w-1.5 h-1.5 rounded-full bg-c-warning animate-pulse" />
+                <span className="text-[10px] font-semibold text-c-warning">Action Required</span>
+              </div>
+            )}
             <p className="text-xs text-text-muted font-medium mb-3">{k.label}</p>
             <p className={`font-mono-data text-3xl font-medium ${k.color} mb-1`}>{k.value}</p>
             <p className="text-xs text-text-muted">{k.sub}</p>
           </div>
         ))}
       </div>
+
+      {/* Notification indicator for pending approval requests */}
+      {stats.pendingRequests > 0 && (
+        <div className="mb-6 bg-gradient-to-r from-purple-core/15 via-elevated to-purple-core/5 border border-purple-core/30 rounded-2xl p-4 flex items-center justify-between animate-fade-in shadow-lg">
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-purple-core/20 border border-purple-core/30 flex items-center justify-center flex-shrink-0">
+              <svg className="w-5 h-5 text-lavender-bright" fill="none" viewBox="0 0 24 24">
+                <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M13.73 21a2 2 0 01-3.46 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-warm-white">
+                  Pending Requests ({stats.pendingRequests})
+                </span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-c-warning/15 border border-c-warning/30 text-c-warning">
+                  Needs Review
+                </span>
+              </div>
+              <p className="text-xs text-text-muted mt-0.5">
+                New approval requests waiting for review. Automated email notifications have been dispatched to organisation HR administrators.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => { setFilter("pending"); setSearch(""); }}
+            className="hidden sm:inline-flex items-center gap-2 px-3.5 py-1.5 bg-purple-core/20 hover:bg-purple-core/30 border border-purple-core/40 text-lavender-soft rounded-xl text-xs font-medium transition-colors cursor-pointer"
+          >
+            <span>View Pending</span>
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 16 16">
+              <path d="M6 3l5 5-5 5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex items-center gap-3 mb-6">
@@ -3063,6 +3106,453 @@ function ApprovalQueueScreen() {
                 className="px-5 py-2 rounded-xl bg-c-critical text-white text-sm font-medium hover:bg-red-600 transition-colors shadow-lg shadow-red-900/20 cursor-pointer"
               >
                 Confirm Rejection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Employee Management ──────────────────────────────────────────────────────
+
+interface ManagedEmployee {
+  id: string
+  _id?: string
+  employeeId: string
+  name: string
+  username: string
+  email: string
+  department: string
+  departmentId?: string | null
+  organisation: string
+  status: "Active" | "Disabled" | "Rejected" | "Pending" | "Onboarding" | string
+  rawStatus: string
+  joinedDate?: string
+  createdAt?: string
+  approvedAt?: string | null
+  lastActivity?: string | null
+  lastActiveAt?: string | null
+  onboardingStatus: string
+}
+
+function HREmployeeManagementScreen() {
+  const [employees, setEmployees] = useState<ManagedEmployee[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState("")
+  const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [departmentFilter, setDepartmentFilter] = useState<string>("all")
+  const [departments, setDepartments] = useState<string[]>([])
+  const [toastMessage, setToastMessage] = useState<string | null>(null)
+
+  // Action states
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
+  const [employeeToDelete, setEmployeeToDelete] = useState<ManagedEmployee | null>(null)
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg)
+    setTimeout(() => {
+      setToastMessage((prev) => (prev === msg ? null : prev))
+    }, 4000)
+  }
+
+  const fetchEmployees = useCallback(async () => {
+    const token = localStorage.getItem("cq_token")
+    if (!token) {
+      setLoading(false)
+      return
+    }
+
+    try {
+      setLoading(true)
+      const res = await fetch(`${API_BASE}/api/hr/employees`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json()
+      if (data.success && Array.isArray(data.employees)) {
+        setEmployees(data.employees)
+        const depts = Array.from(new Set(data.employees.map((e: ManagedEmployee) => e.department).filter(Boolean))) as string[]
+        setDepartments(depts)
+      } else {
+        showToast(data.message || "Failed to load employees.")
+      }
+    } catch (err) {
+      console.error("[HR EMPLOYEES] Fetch failed:", err)
+      showToast("Network error loading employees.")
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchEmployees()
+  }, [fetchEmployees])
+
+  const handleToggleDisable = async (emp: ManagedEmployee) => {
+    const token = localStorage.getItem("cq_token")
+    setActionLoadingId(emp.id)
+
+    try {
+      const res = await fetch(`${API_BASE}/api/hr/employees/${emp.id}/disable`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json()
+      if (data.success) {
+        showToast(data.message || `Employee ${emp.status === "Disabled" ? "enabled" : "disabled"} successfully.`)
+        fetchEmployees()
+      } else {
+        showToast(data.message || "Failed to update employee status.")
+      }
+    } catch {
+      showToast("Network error updating employee.")
+    } finally {
+      setActionLoadingId(null)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!employeeToDelete) return
+    const token = localStorage.getItem("cq_token")
+    setActionLoadingId(employeeToDelete.id)
+
+    try {
+      const res = await fetch(`${API_BASE}/api/hr/employees/${employeeToDelete.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json()
+      if (data.success) {
+        showToast(data.message || "Employee access removed successfully.")
+        setEmployeeToDelete(null)
+        fetchEmployees()
+      } else {
+        showToast(data.message || "Failed to delete employee.")
+      }
+    } catch {
+      showToast("Network error removing employee.")
+    } finally {
+      setActionLoadingId(null)
+    }
+  }
+
+  const visibleEmployees = employees
+    .filter((e) => {
+      if (statusFilter === "all") return true
+      return e.status.toLowerCase() === statusFilter.toLowerCase()
+    })
+    .filter((e) => {
+      if (departmentFilter === "all") return true
+      return e.department === departmentFilter
+    })
+    .filter((e) => {
+      const q = search.toLowerCase().trim()
+      if (!q) return true
+      return (
+        e.name.toLowerCase().includes(q) ||
+        (e.username && e.username.toLowerCase().includes(q)) ||
+        (e.email && e.email.toLowerCase().includes(q)) ||
+        (e.employeeId && e.employeeId.toLowerCase().includes(q)) ||
+        (e.department && e.department.toLowerCase().includes(q))
+      )
+    })
+
+  const activeCount = employees.filter((e) => e.status === "Active").length
+  const disabledCount = employees.filter((e) => e.status === "Disabled").length
+  const totalCount = employees.length
+
+  const formatDate = (dStr?: string | null) => {
+    if (!dStr) return "—"
+    try {
+      const d = new Date(dStr)
+      if (isNaN(d.getTime())) return "—"
+      return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    } catch {
+      return "—"
+    }
+  }
+
+  return (
+    <div className="flex-1 overflow-y-auto p-8 w-full max-w-[1400px] mx-auto relative">
+      {/* Toast notification */}
+      {toastMessage && (
+        <div className="fixed top-6 right-6 z-50 bg-elevated border border-purple-core/40 shadow-2xl rounded-2xl px-5 py-3 text-sm text-warm-white flex items-center gap-3 animate-fade-in">
+          <div className="w-2 h-2 rounded-full bg-purple-core" />
+          <span>{toastMessage}</span>
+          <button onClick={() => setToastMessage(null)} className="ml-2 text-text-muted hover:text-warm-white cursor-pointer">✕</button>
+        </div>
+      )}
+
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div>
+          <h1 className="font-display text-2xl text-warm-white">Employee Management</h1>
+          <p className="text-text-muted text-sm mt-1">
+            Manage employee access, view departments, and control account statuses.
+          </p>
+        </div>
+        <button
+          onClick={fetchEmployees}
+          disabled={loading}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-elevated border border-border-p text-text-secondary text-sm hover:border-border-s transition-colors self-start sm:self-auto cursor-pointer disabled:opacity-50"
+        >
+          <svg className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} fill="none" viewBox="0 0 16 16">
+            <path d="M13 8A5 5 0 112.5 5.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+            <path d="M2 2v4h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          {loading ? "Refreshing…" : "Refresh"}
+        </button>
+      </div>
+
+      {/* Metric Cards Row */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+        <div className="card-base p-5">
+          <p className="text-xs text-text-muted font-medium mb-3">Total Employees</p>
+          <p className="font-mono-data text-3xl font-medium text-warm-white mb-1">{totalCount}</p>
+          <p className="text-xs text-text-muted">Registered in organisation</p>
+        </div>
+        <div className="card-base p-5">
+          <p className="text-xs text-text-muted font-medium mb-3">Active Employees</p>
+          <p className="font-mono-data text-3xl font-medium text-c-success mb-1">{activeCount}</p>
+          <p className="text-xs text-text-muted">Workspace access permitted</p>
+        </div>
+        <div className="card-base p-5">
+          <p className="text-xs text-text-muted font-medium mb-3">Disabled Employees</p>
+          <p className="font-mono-data text-3xl font-medium text-c-critical mb-1">{disabledCount}</p>
+          <p className="text-xs text-text-muted">Login blocked & preserved</p>
+        </div>
+      </div>
+
+      {/* Filters Bar */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mb-6">
+        <div className="flex-1 relative">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" fill="none" viewBox="0 0 16 16">
+            <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.3" />
+            <path d="M10.5 10.5l3 3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+          </svg>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name, username, email, ID, or department..."
+            className="w-full bg-elevated border border-border-p rounded-xl pl-9 pr-4 py-2.5 text-sm text-text-secondary placeholder-text-muted/60 focus:outline-none focus:border-border-s transition-colors"
+          />
+        </div>
+
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="bg-elevated border border-border-p rounded-xl px-3 py-2.5 text-sm text-text-secondary focus:outline-none focus:border-border-s transition-colors cursor-pointer"
+        >
+          <option value="all">All Statuses</option>
+          <option value="active">Active</option>
+          <option value="disabled">Disabled</option>
+          <option value="pending">Pending</option>
+          <option value="rejected">Rejected</option>
+        </select>
+
+        {departments.length > 0 && (
+          <select
+            value={departmentFilter}
+            onChange={(e) => setDepartmentFilter(e.target.value)}
+            className="bg-elevated border border-border-p rounded-xl px-3 py-2.5 text-sm text-text-secondary focus:outline-none focus:border-border-s transition-colors cursor-pointer"
+          >
+            <option value="all">All Departments</option>
+            {departments.map((d) => (
+              <option key={d} value={d}>{d}</option>
+            ))}
+          </select>
+        )}
+      </div>
+
+      {/* Table Area */}
+      {loading && employees.length === 0 ? (
+        <div className="card-base flex flex-col items-center justify-center py-20 text-center">
+          <svg className="w-8 h-8 animate-spin text-purple-core mb-3" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+          </svg>
+          <p className="text-sm text-text-muted">Loading organisation employees...</p>
+        </div>
+      ) : visibleEmployees.length === 0 ? (
+        <div className="card-base flex flex-col items-center justify-center py-20 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-purple-core/10 border border-purple-core/20 flex items-center justify-center mb-4 text-purple-core text-2xl">
+            👥
+          </div>
+          <p className="text-base font-semibold text-warm-white mb-1">No employees found</p>
+          <p className="text-sm text-text-muted">
+            {search.trim() ? "No employees match your search query." : "No registered employees under this organisation yet."}
+          </p>
+        </div>
+      ) : (
+        <div className="bg-surface border border-border-p rounded-2xl overflow-hidden shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm border-collapse min-w-[850px]">
+              <thead>
+                <tr className="border-b border-border-p bg-elevated/40 text-text-muted text-xs uppercase font-medium tracking-wider">
+                  <th className="py-3.5 px-6">Employee</th>
+                  <th className="py-3.5 px-6">Employee ID</th>
+                  <th className="py-3.5 px-6">Email / Username</th>
+                  <th className="py-3.5 px-6">Department</th>
+                  <th className="py-3.5 px-6">Status</th>
+                  <th className="py-3.5 px-6">Joined Date</th>
+                  <th className="py-3.5 px-6">Last Activity</th>
+                  <th className="py-3.5 px-6 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border-p text-xs">
+                {visibleEmployees.map((emp) => {
+                  const isActionLoading = actionLoadingId === emp.id
+                  const isEmpActive = emp.status === "Active"
+                  const isEmpDisabled = emp.status === "Disabled"
+
+                  return (
+                    <tr key={emp.id} className="hover:bg-elevated/30 transition-colors">
+                      {/* Name & Avatar */}
+                      <td className="py-4 px-6">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-purple-core/15 border border-purple-core/25 flex items-center justify-center flex-shrink-0 text-lavender-soft font-semibold text-xs">
+                            {emp.name.slice(0, 2).toUpperCase()}
+                          </div>
+                          <div>
+                            <span className="font-semibold text-warm-white text-sm block">{emp.name}</span>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Employee ID */}
+                      <td className="py-4 px-6 font-mono-data text-lavender-bright">
+                        {emp.employeeId || "—"}
+                      </td>
+
+                      {/* Email / Username */}
+                      <td className="py-4 px-6 text-text-secondary">
+                        <div>
+                          {emp.email && emp.email !== "—" ? (
+                            <span className="block">{emp.email}</span>
+                          ) : emp.username && emp.username !== "—" ? (
+                            <span className="block font-medium">@{emp.username}</span>
+                          ) : (
+                            <span className="text-text-muted">—</span>
+                          )}
+                          {emp.username && emp.email && emp.username !== "—" && (
+                            <span className="text-[11px] text-text-muted block mt-0.5">@{emp.username}</span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Department */}
+                      <td className="py-4 px-6">
+                        <span className="inline-block px-2.5 py-1 rounded-lg bg-elevated border border-border-p text-text-secondary text-xs">
+                          {emp.department || "Unassigned"}
+                        </span>
+                      </td>
+
+                      {/* Status */}
+                      <td className="py-4 px-6">
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
+                            isEmpActive
+                              ? "bg-c-success/10 text-c-success border-c-success/25"
+                              : isEmpDisabled
+                              ? "bg-c-critical/10 text-c-critical border-c-critical/25"
+                              : emp.status === "Rejected"
+                              ? "bg-red-500/10 text-red-400 border-red-500/25"
+                              : "bg-c-warning/10 text-c-warning border-c-warning/25"
+                          }`}
+                        >
+                          <div className="w-1.5 h-1.5 rounded-full bg-current" />
+                          {emp.status}
+                        </span>
+                      </td>
+
+                      {/* Joined Date */}
+                      <td className="py-4 px-6 text-text-muted font-mono-data text-xs">
+                        {formatDate(emp.joinedDate || emp.createdAt)}
+                      </td>
+
+                      {/* Last Activity */}
+                      <td className="py-4 px-6 text-text-muted font-mono-data text-xs">
+                        {formatDate(emp.lastActivity || emp.lastActiveAt)}
+                      </td>
+
+                      {/* Actions */}
+                      <td className="py-4 px-6 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {/* Disable / Enable Button */}
+                          <button
+                            onClick={() => handleToggleDisable(emp)}
+                            disabled={isActionLoading}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap ${
+                              isEmpDisabled
+                                ? "border-c-success/30 text-c-success hover:bg-c-success/10"
+                                : "border-c-warning/30 text-c-warning hover:bg-c-warning/10"
+                            }`}
+                            title={isEmpDisabled ? "Re-enable employee login" : "Disable employee access"}
+                          >
+                            {isEmpDisabled ? "Enable" : "Disable"}
+                          </button>
+
+                          {/* Delete Button */}
+                          <button
+                            onClick={() => setEmployeeToDelete(emp)}
+                            disabled={isActionLoading}
+                            className="p-1.5 rounded-lg border border-c-critical/30 text-c-critical hover:bg-c-critical/10 transition-colors cursor-pointer disabled:opacity-50"
+                            title="Remove employee from organisation"
+                            aria-label={`Remove ${emp.name}`}
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {employeeToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-surface border border-border-s rounded-2xl w-full max-w-md p-6 shadow-2xl animate-fade-in">
+            <div className="w-12 h-12 rounded-full bg-c-critical/10 border border-c-critical/20 flex items-center justify-center text-c-critical mb-4">
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+
+            <h3 className="text-lg font-display text-warm-white mb-2">Remove Employee</h3>
+            <p className="text-sm text-text-muted mb-6 leading-relaxed">
+              Are you sure you want to remove this employee? This action cannot be undone.
+            </p>
+
+            <div className="p-3.5 bg-elevated rounded-xl border border-border-p mb-6 space-y-1 text-xs">
+              <p className="text-warm-white font-medium">{employeeToDelete.name}</p>
+              <p className="text-text-muted">
+                {employeeToDelete.employeeId} {employeeToDelete.email ? `• ${employeeToDelete.email}` : ""}
+              </p>
+              <p className="text-text-muted">Department: {employeeToDelete.department}</p>
+            </div>
+
+            <div className="flex items-center justify-end gap-3">
+              <button
+                onClick={() => setEmployeeToDelete(null)}
+                disabled={actionLoadingId === employeeToDelete.id}
+                className="px-4 py-2 rounded-xl border border-border-p text-text-secondary text-sm hover:border-border-s transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={actionLoadingId === employeeToDelete.id}
+                className="px-5 py-2 rounded-xl bg-c-critical text-white text-sm font-medium hover:bg-red-600 transition-colors shadow-lg shadow-red-900/20 cursor-pointer disabled:opacity-50"
+              >
+                {actionLoadingId === employeeToDelete.id ? "Removing..." : "Remove Employee"}
               </button>
             </div>
           </div>
@@ -3723,6 +4213,7 @@ export default function HRApp() {
           {screen === "interventions" && <InterventionsScreen />}
           {screen === "reports" && <ReportsScreen />}
           {screen === "approval-queue" && <ApprovalQueueScreen />}
+          {screen === "employees" && <HREmployeeManagementScreen />}
           {screen === "settings" && <HRSettingsScreen />}
         </div>
       </div>

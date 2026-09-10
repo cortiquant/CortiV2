@@ -37,10 +37,10 @@ const userSchema = new mongoose.Schema(
       default: "employee",
     },
 
-    // Status: OnboardingRequired → PendingApproval (or Pending) → Active (or Approved) | Rejected
+    // Status: OnboardingRequired → PendingApproval (or Pending) → Active (or Approved) | Rejected | Disabled | Inactive
     status: {
       type: String,
-      enum: ["OnboardingRequired", "PendingApproval", "Pending", "Approved", "Rejected", "Active"],
+      enum: ["OnboardingRequired", "PendingApproval", "Pending", "Approved", "Rejected", "Active", "Disabled", "Inactive"],
       default: "OnboardingRequired",
     },
 

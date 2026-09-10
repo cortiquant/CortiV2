@@ -154,12 +154,14 @@ export default function Login({ onEmployeeSignIn, onCreateAccount, onHR, onBack 
   // Create account fields
   const [fullName, setFullName] = useState("")
   const [username, setUsername] = useState("")
+  const [email, setEmail] = useState("")
   const [createPw, setCreatePw] = useState("")
   const [confirmPw, setConfirmPw] = useState("")
   const [showCreatePw, setShowCreatePw] = useState(false)
   const [showConfirmPw, setShowConfirmPw] = useState(false)
   const [nameFocused, setNameFocused] = useState(false)
   const [usernameFocused2, setUsernameFocused2] = useState(false)
+  const [emailFocused, setEmailFocused] = useState(false)
   const [createPwFocused, setCreatePwFocused] = useState(false)
   const [confirmPwFocused, setConfirmPwFocused] = useState(false)
   const [agreePrivacy, setAgreePrivacy] = useState(false)
@@ -317,6 +319,7 @@ export default function Login({ onEmployeeSignIn, onCreateAccount, onHR, onBack 
           organisationCode: verifiedOrg.organisationCode,
           name: fullName.trim(),
           username: username.trim().toLowerCase(),
+          email: email.trim().toLowerCase() || undefined,
           password: createPw,
           privacyConsent: agreePrivacy,
           participantConsent: agreeConsent,
@@ -575,6 +578,20 @@ export default function Login({ onEmployeeSignIn, onCreateAccount, onHR, onBack 
                   focused={usernameFocused2}
                   onFocus={() => setUsernameFocused2(true)}
                   onBlur={() => setUsernameFocused2(false)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-text-secondary mb-1.5">Email Address</label>
+                <InputRow
+                  icon={<EmailIcon focused={emailFocused} />}
+                  type="email"
+                  placeholder="name@company.com"
+                  value={email}
+                  onChange={setEmail}
+                  focused={emailFocused}
+                  onFocus={() => setEmailFocused(true)}
+                  onBlur={() => setEmailFocused(false)}
                 />
               </div>
 

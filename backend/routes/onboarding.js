@@ -4,6 +4,7 @@ const CorporateOnboarding = require("../models/CorporateOnboarding")
 const User = require("../models/User")
 const { logActivity } = require("../services/activityService")
 const { getOrCreateDepartment } = require("../services/departmentService")
+const { sendEmployeeApprovalNotification } = require("../services/notificationService")
 const { requireEmployee, requireHR } = require("../middleware/auth")
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -233,14 +234,25 @@ router.post("/", requireEmployee, async (req, res) => {
 
     // ── Mark user profile as onboarding complete, transition to PendingApproval, assign department ──
     const nextStatus = user.status === "Approved" || user.status === "Active" ? user.status : "PendingApproval"
-    await User.findByIdAndUpdate(user._id, {
-      onboardingCompleted: true,
-      department: departmentName,
-      departmentId: departmentId,
-      status: nextStatus,
-    })
+    const updatedUser = await User.findByIdAndUpdate(
+      user._id,
+      {
+        onboardingCompleted: true,
+        department: departmentName,
+        departmentId: departmentId,
+        status: nextStatus,
+      },
+      { new: true }
+    )
 
     console.log(`[ONBOARDING] Profile saved successfully for ${user.username || user.employeeId || user.email} (Status: ${nextStatus})`)
+
+    // Trigger HR Email Notification if transitioning to PendingApproval
+    if (nextStatus === "PendingApproval") {
+      sendEmployeeApprovalNotification(updatedUser || user).catch((notifErr) => {
+        console.error("[ONBOARDING] Non-fatal notification error:", notifErr.message)
+      })
+    }
 
     await logActivity({
       req,
