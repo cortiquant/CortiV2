@@ -4,6 +4,7 @@ const Assessment = require("../models/Assessment")
 const User = require("../models/User")
 const { requireActiveEmployee } = require("../middleware/auth")
 const { logActivity } = require("../services/activityService")
+const { getCategory } = require("../services/msiClassification")
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MSI CALCULATION FORMULA (NORMALIZED 0-100)
@@ -76,14 +77,6 @@ function calculateDailyCheckInMSI({ feeling, stressor, physical, moodCheck, stre
       msi,
     },
   }
-}
-
-function getCategory(msi) {
-  if (msi <= 20) return "Healthy"
-  if (msi <= 40) return "Mild"
-  if (msi <= 60) return "Moderate"
-  if (msi <= 80) return "High"
-  return "Burnout"
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -167,15 +160,132 @@ router.post("/checkin", requireActiveEmployee, async (req, res) => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/assessments/baseline/eligibility
+// Checks whether the logged-in employee can complete or update Baseline MSI.
+// - If no previous baseline: eligible = true, status = "initial"
+// - If previous baseline exists:
+//   - eligible = false if < 7 days have passed since last baseline
+//   - eligible = true if >= 7 days have passed
+// Returns remainingDays, nextAvailableDate, lastBaselineDate, baselineMsi, history
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/baseline/eligibility", requireActiveEmployee, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id)
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found." })
+    }
+
+    const lastDate = user.lastBaselineMsiDate || user.baselineCompletedAt || null
+    const hasBaseline = user.baselineMsi != null && lastDate != null
+
+    if (!hasBaseline) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          eligible: true,
+          status: "initial",
+          buttonLabel: "Complete Baseline MSI",
+          currentMsi: user.baselineMsi ?? null,
+          lastBaselineMsiDate: null,
+          nextBaselineMsiDate: null,
+          remainingDays: 0,
+          remainingHours: 0,
+          message: "Ready to establish your baseline MSI.",
+          baselineMsiHistory: user.baselineMsiHistory || [],
+        },
+      })
+    }
+
+    const lastTime = new Date(lastDate).getTime()
+    const nextTime = user.nextBaselineMsiDate
+      ? new Date(user.nextBaselineMsiDate).getTime()
+      : lastTime + 7 * 24 * 60 * 60 * 1000
+
+    const now = Date.now()
+    const diffMs = nextTime - now
+
+    if (diffMs <= 0) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          eligible: true,
+          status: "ready_for_update",
+          buttonLabel: "Update your Baseline MSI",
+          currentMsi: user.baselineMsi,
+          lastBaselineMsiDate: new Date(lastTime).toISOString(),
+          nextBaselineMsiDate: new Date(nextTime).toISOString(),
+          remainingDays: 0,
+          remainingHours: 0,
+          message: "Your weekly baseline MSI update is now available.",
+          baselineMsiHistory: user.baselineMsiHistory || [],
+        },
+      })
+    }
+
+    // Still in cooldown period
+    const remainingDays = Math.ceil(diffMs / (24 * 60 * 60 * 1000))
+    const remainingHours = Math.ceil(diffMs / (60 * 60 * 1000))
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        eligible: false,
+        status: "cooldown",
+        buttonLabel: "Update your Baseline MSI",
+        currentMsi: user.baselineMsi,
+        lastBaselineMsiDate: new Date(lastTime).toISOString(),
+        nextBaselineMsiDate: new Date(nextTime).toISOString(),
+        remainingDays,
+        remainingHours,
+        message: `Available again in ${remainingDays} ${remainingDays === 1 ? "day" : "days"}.`,
+        baselineMsiHistory: user.baselineMsiHistory || [],
+      },
+    })
+  } catch (err) {
+    console.error("[ASSESSMENT] Error checking baseline eligibility:", err.message)
+    res.status(500).json({ success: false, message: "Server error checking baseline eligibility." })
+  }
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // POST /api/assessments/baseline
-// Submits first-time Baseline MSI Assessment.
+// Submits Baseline MSI Assessment (initial or weekly update).
 // Calculates MSI normalized 0–100, persists as type 'Baseline MSI' in Assessment
-// collection, and stores baselineMsi and baselineCompletedAt directly on User.
+// collection, records in baselineMsiHistory, and updates baselineMsi, lastBaselineMsiDate,
+// and nextBaselineMsiDate directly on User.
+//
+// Validation: Enforces 7-day cooldown on the backend if a baseline already exists.
 // ─────────────────────────────────────────────────────────────────────────────
 router.post("/baseline", requireActiveEmployee, async (req, res) => {
   try {
-    const user = req.user
+    const user = await User.findById(req.user._id)
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found." })
+    }
+
     const { answers, moodCheck, stressPulse, physicalCheck } = req.body
+
+    // ── Enforce 7-day validation if previous baseline exists ───────────────────
+    const lastDate = user.lastBaselineMsiDate || user.baselineCompletedAt
+    if (user.baselineMsi != null && lastDate) {
+      const lastTime = new Date(lastDate).getTime()
+      const nextTime = user.nextBaselineMsiDate
+        ? new Date(user.nextBaselineMsiDate).getTime()
+        : lastTime + 7 * 24 * 60 * 60 * 1000
+      const now = Date.now()
+
+      if (now < nextTime) {
+        const remainingDays = Math.ceil((nextTime - now) / (24 * 60 * 60 * 1000))
+        return res.status(403).json({
+          success: false,
+          code: "BASELINE_COOLDOWN",
+          message: `Baseline MSI can only be updated once every 7 days. Next update available in ${remainingDays} ${remainingDays === 1 ? "day" : "days"} on ${new Date(nextTime).toLocaleDateString("en-US", { day: "numeric", month: "long", year: "numeric" })}.`,
+          nextBaselineMsiDate: new Date(nextTime).toISOString(),
+          remainingDays,
+        })
+      }
+    }
 
     let msi = 0
     let scores = {}
@@ -212,6 +322,7 @@ router.post("/baseline", requireActiveEmployee, async (req, res) => {
 
     const category = getCategory(msi)
     const now = new Date()
+    const nextAvailable = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
 
     // 1. Create Assessment entry of type "Baseline MSI"
     const assessmentDoc = new Assessment({
@@ -230,13 +341,31 @@ router.post("/baseline", requireActiveEmployee, async (req, res) => {
     })
     await assessmentDoc.save()
 
-    // 2. Persist baseline directly onto User model if not already set (or set baseline)
-    await User.findByIdAndUpdate(user._id, {
-      baselineMsi: msi,
-      baselineCompletedAt: now,
-    })
+    // 2. Prepare new history entry
+    const newHistoryEntry = {
+      score: msi,
+      completedAt: now,
+    }
 
-    console.log(`[ASSESSMENT] Baseline MSI saved for ${user.username || user.name}: MSI=${msi} (${category})`)
+    // Build existing history if user previously had a baseline but empty history array
+    let history = user.baselineMsiHistory || []
+    if (history.length === 0 && user.baselineMsi != null && lastDate) {
+      history.push({
+        score: user.baselineMsi,
+        completedAt: new Date(lastDate),
+      })
+    }
+    history.push(newHistoryEntry)
+
+    // 3. Persist baseline directly onto User model
+    user.baselineMsi = msi
+    user.baselineCompletedAt = user.baselineCompletedAt || now
+    user.lastBaselineMsiDate = now
+    user.nextBaselineMsiDate = nextAvailable
+    user.baselineMsiHistory = history
+    await user.save()
+
+    console.log(`[ASSESSMENT] Baseline MSI saved for ${user.username || user.name}: MSI=${msi} (${category}), next update: ${nextAvailable.toISOString()}`)
 
     await logActivity({
       req,
@@ -258,6 +387,10 @@ router.post("/baseline", requireActiveEmployee, async (req, res) => {
         category,
         scores,
         completedAt: now,
+        lastBaselineMsiDate: now.toISOString(),
+        nextBaselineMsiDate: nextAvailable.toISOString(),
+        remainingDays: 7,
+        baselineMsiHistory: user.baselineMsiHistory,
       },
     })
   } catch (err) {
@@ -270,6 +403,7 @@ router.post("/baseline", requireActiveEmployee, async (req, res) => {
 // GET /api/assessments/metrics
 // Retrieves real dashboard metrics for the authenticated employee:
 // - Baseline Stress (Baseline MSI)
+// - Baseline eligibility and countdown
 // - Current Stress (Current MSI from latest daily check-in)
 // - Primary Archetype (stored archetype)
 // - Last Assessment Date
@@ -292,11 +426,54 @@ router.get("/metrics", requireActiveEmployee, async (req, res) => {
       userId: user._id,
     }).sort({ completedAt: -1 })
 
+    // Calculate baseline eligibility & timing
+    const lastDate = user.lastBaselineMsiDate || user.baselineCompletedAt || null
+    const hasBaseline = user.baselineMsi != null && lastDate != null
+    let baselineEligibility = {
+      eligible: true,
+      status: "initial",
+      remainingDays: 0,
+      lastBaselineMsiDate: null,
+      nextBaselineMsiDate: null,
+    }
+
+    if (hasBaseline) {
+      const lastTime = new Date(lastDate).getTime()
+      const nextTime = user.nextBaselineMsiDate
+        ? new Date(user.nextBaselineMsiDate).getTime()
+        : lastTime + 7 * 24 * 60 * 60 * 1000
+      const now = Date.now()
+      const diffMs = nextTime - now
+
+      if (diffMs <= 0) {
+        baselineEligibility = {
+          eligible: true,
+          status: "ready_for_update",
+          remainingDays: 0,
+          lastBaselineMsiDate: new Date(lastTime).toISOString(),
+          nextBaselineMsiDate: new Date(nextTime).toISOString(),
+        }
+      } else {
+        const remainingDays = Math.ceil(diffMs / (24 * 60 * 60 * 1000))
+        baselineEligibility = {
+          eligible: false,
+          status: "cooldown",
+          remainingDays,
+          lastBaselineMsiDate: new Date(lastTime).toISOString(),
+          nextBaselineMsiDate: new Date(nextTime).toISOString(),
+        }
+      }
+    }
+
     return res.status(200).json({
       success: true,
       data: {
         baselineMsi: user.baselineMsi ?? null,
         baselineCompletedAt: user.baselineCompletedAt ?? null,
+        lastBaselineMsiDate: user.lastBaselineMsiDate || user.baselineCompletedAt || null,
+        nextBaselineMsiDate: user.nextBaselineMsiDate || null,
+        baselineMsiHistory: user.baselineMsiHistory || [],
+        baselineEligibility,
         currentMsi: latestDaily ? latestDaily.msi : null,
         currentCategory: latestDaily ? latestDaily.category : null,
         latestDailyDate: latestDaily ? latestDaily.completedAt : null,

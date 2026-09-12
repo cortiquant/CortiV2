@@ -11,6 +11,7 @@ const { requireHR } = require("../middleware/auth")
 const { ensureDepartmentsForOrg } = require("../services/departmentService")
 const { ensureInterventionsForOrg } = require("../services/interventionService")
 const { logActivity } = require("../services/activityService")
+const { mapMsiToStressState } = require("../services/msiClassification")
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper: Resolve organisation document from HR's authenticated context
@@ -27,18 +28,6 @@ async function resolveHROrganisation(req) {
     ],
   })
   return org
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helper: Map MSI to Stress State for HR Dashboard
-// normal (<=40), acute (41-60), persistent (61-80), burnout-risk (>80)
-// ─────────────────────────────────────────────────────────────────────────────
-function mapMsiToStressState(msi) {
-  if (msi == null) return "normal"
-  if (msi <= 40) return "normal"
-  if (msi <= 60) return "acute"
-  if (msi <= 80) return "persistent"
-  return "burnout-risk"
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -1,0 +1,59 @@
+TOTAL PAGES: 1
+
+=== PAGE 1 ===
+CORTIQUANT 
+Stress Diagnostics. Reimagined. 
+  
+PARTICIPANT CONSENT & DATA DISCLAIMER 
+Pilot Testing Program  |  Please read carefully before proceeding 
+What this form is about 
+You are about to sign up as a participant in Cortiquant's pilot testing program. As part of this program, the Cortiquant app will collect 
+stress-related data through your responses and (where applicable) diagnostic inputs. A portion of this data will be used for research and 
+scientific validation of our platform. 
+  
+WHAT DATA IS COLLECTED 
+• Stress scores and responses from the Mind Stress Index (MSI) questionnaire 
+• Stress category classification based on MSI composite score 
+• Usage patterns within the Cortiquant application 
+  
+HOW IT IS USED 
+• Research validation and scientific accuracy testing of the 
+Cortiquant platform 
+• Improving algorithm performance and stress classification 
+models 
+• Internal product development — not for commercial sale or 
+third-party sharing 
+YOUR PRIVACY PROTECTIONS 
+• All data is de-identified — your name, contact, and employer 
+details are removed before any research use 
+• No personally identifiable information (PII) will appear in any 
+research output or report 
+• Data is stored securely and accessible only to the Cortiquant 
+research team 
+  
+Your Rights as a Participant 
+You may withdraw your participation at any time. Withdrawal will not affect your employment or standing with your organization. To 
+withdraw or request deletion of your data, contact us at: contact@cortiquant.com 
+  
+YOUR CONSENT 
+By checking the boxes below and clicking I Agree, you confirm that: 
+☐ I have read and understood this Consent & Data Disclaimer. 
+  
+☐ I voluntarily agree to participate in Cortiquant's pilot testing program. 
+  
+☐ I consent to the collection and de-identified use of my stress data for research and validation purposes. 
+  
+☐ I understand I may withdraw at any time without consequence. 
+  
+  
+Full Name: 
+    Employee ID / Code: 
+    Date: 
+   
+  
+Signature: 
+   
+Organization: 
+   
+Cortiquant  |  contact@cortiquant.com  |  This form is valid for pilot participants only and does not constitute an employment or commercial agreement. 
+

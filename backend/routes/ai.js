@@ -193,4 +193,68 @@ router.post("/root-cause-recommendations", requireActiveEmployee, async (req, re
   }
 })
 
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/ai/priority-reset
+// Generates personalized AI Priority Path analysis for employee tasks.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post("/priority-reset", requireActiveEmployee, async (req, res) => {
+  try {
+    const user = req.user
+    const { tasks, history, msi: requestedMsi } = req.body
+
+    if (!Array.isArray(tasks) || tasks.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "A list of tasks is required for Priority Path analysis.",
+      })
+    }
+
+    // Resolve trusted MSI
+    let resolvedMsi = requestedMsi
+    if (resolvedMsi == null || typeof resolvedMsi !== "number") {
+      const latestDaily = await Assessment.findOne({
+        userId: user._id,
+        type: "Daily Check-in (MSI)",
+      }).sort({ completedAt: -1 })
+      resolvedMsi = latestDaily ? latestDaily.msi : (user.baselineMsi ?? 50)
+    }
+
+    // Safe employee context
+    const userContext = {
+      department: user.department || null,
+      designation: user.designation || null,
+    }
+
+    const { generatePriorityPathAnalysis } = require("../services/aiRecommendationService")
+    const priorityPath = await generatePriorityPathAnalysis({
+      tasks,
+      msi: resolvedMsi,
+      history: history || {},
+      userContext,
+    })
+
+    await logActivity({
+      req,
+      user,
+      action: "AI Priority Path Generated",
+      status: "Success",
+      organisationId: user.organisationId,
+      entityType: "PriorityReset",
+      details: `AI Priority Path generated for ${tasks.length} tasks (MSI: ${resolvedMsi})`,
+    })
+
+    return res.status(200).json({
+      success: true,
+      data: priorityPath,
+    })
+  } catch (err) {
+    console.error("[PRIORITY-AI-ROUTE] POST /priority-reset error:", err.message)
+    return res.status(500).json({
+      success: false,
+      message: "Unable to analyze priority path right now.",
+    })
+  }
+})
+
 module.exports = router
+

@@ -3,7 +3,7 @@ const router = express.Router()
 const CorporateOnboarding = require("../models/CorporateOnboarding")
 const User = require("../models/User")
 const { logActivity } = require("../services/activityService")
-const { getOrCreateDepartment } = require("../services/departmentService")
+const { getOrCreateDepartment, normalizeDepartmentName } = require("../services/departmentService")
 const { sendEmployeeApprovalNotification } = require("../services/notificationService")
 const { requireEmployee, requireHR } = require("../middleware/auth")
 
@@ -193,7 +193,8 @@ router.post("/", requireEmployee, async (req, res) => {
       return res.status(400).json({ success: false, message: error })
     }
 
-    const departmentName = participantProfile.D3 || null
+    const rawDept = participantProfile.D3 || null
+    const departmentName = rawDept ? normalizeDepartmentName(rawDept) : null
     let departmentId = null
     if (departmentName && user.organisationId) {
       try {
@@ -218,7 +219,7 @@ router.post("/", requireEmployee, async (req, res) => {
           participantProfile: {
             D1: participantProfile.D1,
             D2: participantProfile.D2,
-            D3: participantProfile.D3,
+            D3: departmentName || participantProfile.D3,
             D4: participantProfile.D4,
             D5: participantProfile.D5,
             D6: participantProfile.D6,

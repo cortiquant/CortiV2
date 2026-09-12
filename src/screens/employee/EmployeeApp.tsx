@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import UpcomingSessionCard, { UpcomingSessionData } from "@/components/UpcomingSessionCard"
+import { getMSIBand, getMSICategory, MSI_BANDS, MSIBandLabel } from "@/utils/msiClassification"
 import BaselineMSI from "./BaselineMSI"
 import StressDriverFlow from "./StressDriverFlow"
 import PriorityReset from "./PriorityReset"
@@ -69,36 +70,41 @@ function BottomNav({ active, onNav }: { active: string; onNav: (s: Screen) => vo
   const homeGroup  = ["my-stress", "checkin-1", "checkin-2", "checkin-3", "driver", "result", "recommended", "baseline-msi", "stress-cause", "msi-meaning", "profile", "settings", "listener-connect", "listener-schedule", "notifications"]
 
   return (
-    <div className="sticky bottom-0 left-0 right-0 z-50 w-full mt-auto">
-      {/* Soft fade upward */}
-      <div className="h-6 bg-gradient-to-t from-midnight/90 to-transparent pointer-events-none" />
-      <div className="bg-midnight/92 backdrop-blur-xl">
-        <div className="flex items-center justify-around px-2 py-2.5">
-          {tabs.map((t) => {
-            const Icon = t.icon
-            const isActive =
-              active === t.id ||
-              (t.id === "home"       && homeGroup.includes(active)) ||
-              (t.id === "dump-bag"   && dumpGroup.includes(active)) ||
-              (t.id === "reset-list" && resetGroup.includes(active))
-            return (
-              <button
-                key={t.id}
-                onClick={() => onNav(t.id as Screen)}
-                className="flex flex-col items-center gap-1 py-1.5 px-3 min-h-[44px] transition-all"
-              >
-                <div className={`w-9 h-9 rounded-2xl flex items-center justify-center transition-all duration-300 ${isActive ? "bg-purple-core/15" : ""}`}>
-                  <Icon active={isActive} />
-                </div>
-                <span className={`text-[9px] font-medium tracking-wide transition-colors ${isActive ? "text-lavender-bright" : "text-text-muted/70"}`}>
-                  {t.label}
-                </span>
-              </button>
-            )
-          })}
+    <nav
+      aria-label="Bottom Navigation"
+      className="fixed bottom-0 left-0 right-0 z-50 pointer-events-none flex justify-center"
+    >
+      <div className="w-full max-w-xl md:max-w-2xl lg:max-w-3xl pointer-events-auto relative">
+        {/* Soft gradient fade upward */}
+        <div className="h-6 bg-gradient-to-t from-midnight/90 to-transparent pointer-events-none" />
+        <div className="bg-midnight/95 backdrop-blur-xl border-t border-white/[0.06] pb-[env(safe-area-inset-bottom,0px)] shadow-[0_-8px_30px_rgba(0,0,0,0.45)]">
+          <div className="flex items-center justify-around px-2 py-2">
+            {tabs.map((t) => {
+              const Icon = t.icon
+              const isActive =
+                active === t.id ||
+                (t.id === "home"       && homeGroup.includes(active)) ||
+                (t.id === "dump-bag"   && dumpGroup.includes(active)) ||
+                (t.id === "reset-list" && resetGroup.includes(active))
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => onNav(t.id as Screen)}
+                  className="flex flex-col items-center gap-1 py-1 px-3 min-h-[44px] transition-all cursor-pointer"
+                >
+                  <div className={`w-9 h-9 rounded-2xl flex items-center justify-center transition-all duration-300 ${isActive ? "bg-purple-core/15" : ""}`}>
+                    <Icon active={isActive} />
+                  </div>
+                  <span className={`text-[9px] font-medium tracking-wide transition-colors ${isActive ? "text-lavender-bright" : "text-text-muted/70"}`}>
+                    {t.label}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
         </div>
       </div>
-    </div>
+    </nav>
   )
 }
 
@@ -137,7 +143,7 @@ function NavHeartIcon({ active }: { active: boolean }) {
 
 function Shell({ children, noNav }: { children: React.ReactNode; noNav?: boolean }) {
   return (
-    <div className={`flex-1 overflow-y-auto px-5 pt-5 ${noNav ? "pb-6" : "pb-28"}`}>
+    <div className={`flex-1 overflow-y-auto px-5 pt-5 ${noNav ? "pb-6" : "pb-[calc(7rem+env(safe-area-inset-bottom,0px))]"}`}>
       {children}
     </div>
   )
@@ -163,11 +169,7 @@ function StepBar({ current, total }: { current: number; total: number }) {
 }
 
 function getBand(msi: number) {
-  if (msi <= 20) return { label: "Healthy",  color: "text-c-success",  bg: "bg-c-success/10",  border: "border-c-success/25",  dot: "bg-c-success"  }
-  if (msi <= 40) return { label: "Mild",      color: "text-c-info",     bg: "bg-c-info/10",     border: "border-c-info/25",     dot: "bg-c-info"     }
-  if (msi <= 60) return { label: "Moderate",  color: "text-lavender-soft", bg: "bg-purple-core/10", border: "border-purple-core/25", dot: "bg-lavender-soft" }
-  if (msi <= 80) return { label: "High",      color: "text-c-warning",  bg: "bg-c-warning/10",  border: "border-c-warning/25",  dot: "bg-c-warning"  }
-  return           { label: "Burnout",    color: "text-c-critical", bg: "bg-c-critical/10", border: "border-c-critical/25", dot: "bg-c-critical" }
+  return getMSIBand(msi)
 }
 
 function DriverBar({ label, value, max = 100 }: { label: string; value: number; max?: number }) {
@@ -238,6 +240,50 @@ const GAUGE_COLOR: Record<string, string> = {
   Moderate: "#a78bfa",
   High:     "#f59e0b",
   Burnout:  "#f87171",
+}
+
+// MSI Stress Card Category and Color band configuration
+interface StressCategoryConfig {
+  gaugeColor: string  // Hex gauge stroke color
+  title: string
+  subtext: string
+}
+
+function getMsiStressCategory(score: number | null | undefined): StressCategoryConfig {
+  const num = Math.round(Number(score) || 0)
+  if (num <= 20) {
+    return {
+      gaugeColor: "#34d399",
+      title: "You're in a good place today.",
+      subtext: "Keep doing what you're doing, your recovery is working.",
+    }
+  }
+  if (num <= 40) {
+    return {
+      gaugeColor: "#fbbf24",
+      title: "Some pressure is showing up today.",
+      subtext: "Small resets can help you feel balanced again.",
+    }
+  }
+  if (num <= 60) {
+    return {
+      gaugeColor: "#fb923c",
+      title: "Your stress needs some attention today.",
+      subtext: "Let's take small steps to help you feel better.",
+    }
+  }
+  if (num <= 80) {
+    return {
+      gaugeColor: "#f43f5e",
+      title: "Today feels heavier.",
+      subtext: "You don't have to handle everything at once. Let's take it one step at a time.",
+    }
+  }
+  return {
+    gaugeColor: "#ef4444",
+    title: "Your mind and body need recovery right now.",
+    subtext: "Give yourself space to pause and reset.",
+  }
 }
 
 type PrimaryRec = { icon: string; title: string; label: string; nav: Screen; cta: string; iconBg: string; iconBorder: string }
@@ -430,9 +476,16 @@ function HomeScreen({ onNav }: { onNav: (s: Screen) => void }) {
   const currentMsi = assessmentMetrics?.currentMsi ?? null
   const msiForDisplay = currentMsi ?? baselineMsi ?? 50
   const band = getBand(msiForDisplay)
+  const baselineBand = baselineMsi != null ? getBand(baselineMsi) : band
+
+  // Stress category styling and caring human assurance messaging for MSI card
+  const displayScore = currentMsi ?? baselineMsi ?? 0
+  const activeStressCat = getMsiStressCategory(displayScore)
+
   const headline = currentMsi != null ? (MSI_HEADLINE[band.label] ?? "Your stress is running smoothly.") : "Baseline established. Check in to track daily shifts."
   const subtext = currentMsi != null ? (MSI_SUBTEXT[band.label] ?? "Even a few quiet minutes today can help.") : "Take your daily check-in to monitor changes from your baseline."
   const gaugeColor = currentMsi != null ? (GAUGE_COLOR[band.label] ?? "#4ade80") : "#a78bfa"
+  const baselineGaugeColor = baselineMsi != null ? (GAUGE_COLOR[baselineBand.label] ?? "#4ade80") : "#a78bfa"
   const primaryRec = getPrimaryRec(msiForDisplay)
 
   const assessments = JSON.parse(localStorage.getItem("cq_stress_assessments") ?? "[]")
@@ -440,11 +493,41 @@ function HomeScreen({ onNav }: { onNav: (s: Screen) => void }) {
   const driver = recentAssessment?.selectedDriver
   const advice = getAdvice(msiForDisplay, driver)
 
+  // Baseline MSI Weekly Update Logic
+  const lastBaselineDateRaw = assessmentMetrics?.lastBaselineMsiDate || assessmentMetrics?.baselineCompletedAt || localStorage.getItem("cq_last_baseline_date") || null
+  const lastBaselineDateObj = lastBaselineDateRaw ? new Date(lastBaselineDateRaw) : null
+  const lastBaselineDateFormatted = lastBaselineDateObj && !isNaN(lastBaselineDateObj.getTime())
+    ? lastBaselineDateObj.toLocaleDateString("en-US", { day: "numeric", month: "long", year: "numeric" })
+    : null
+
+  let isBaselineEligible = !hasBaseline
+  let baselineRemainingDays = 0
+  let nextBaselineDateFormatted = null
+
+  if (hasBaseline && lastBaselineDateObj && !isNaN(lastBaselineDateObj.getTime())) {
+    const nextBaselineTime = assessmentMetrics?.nextBaselineMsiDate
+      ? new Date(assessmentMetrics.nextBaselineMsiDate).getTime()
+      : lastBaselineDateObj.getTime() + 7 * 24 * 60 * 60 * 1000
+    const nowMs = Date.now()
+    const diffMs = nextBaselineTime - nowMs
+    if (diffMs <= 0) {
+      isBaselineEligible = true
+      baselineRemainingDays = 0
+    } else {
+      isBaselineEligible = false
+      baselineRemainingDays = Math.ceil(diffMs / (24 * 60 * 60 * 1000))
+    }
+    const nextDateObj = new Date(nextBaselineTime)
+    if (!isNaN(nextDateObj.getTime())) {
+      nextBaselineDateFormatted = nextDateObj.toLocaleDateString("en-US", { day: "numeric", month: "long", year: "numeric" })
+    }
+  }
+
   // Current formatted date
   const todayStr = new Date().toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long" })
 
   return (
-    <div className="flex-1 overflow-y-auto pb-32 relative">
+    <div className="flex-1 overflow-y-auto pb-[calc(7.5rem+env(safe-area-inset-bottom,0px))] relative">
       {/* Ambient background orbs */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         <div className="absolute -top-16 left-1/2 -translate-x-1/2 w-96 h-96 rounded-full" style={{ background: "radial-gradient(circle, rgba(155,93,229,0.10) 0%, transparent 68%)", filter: "blur(32px)" }} />
@@ -492,48 +575,96 @@ function HomeScreen({ onNav }: { onNav: (s: Screen) => void }) {
         {/* Real-time Upcoming Session Card (Earliest next session) */}
         <UpcomingSessionCard role="employee" />
 
-        {/* MSI card — compact horizontal */}
+        {/* Weekly Baseline MSI Card */}
         {!hasBaseline ? (
           <SoftCard delay={40}>
-            <button onClick={() => onNav("baseline-msi")} className="flex items-center gap-4 p-4 w-full group text-left">
-              <div className="w-14 h-14 rounded-full bg-purple-core/10 border border-purple-core/20 flex items-center justify-center flex-shrink-0 group-hover:bg-purple-core/18 transition-all duration-300">
-                <svg className="w-6 h-6 text-purple-core" fill="none" viewBox="0 0 24 24">
-                  <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                </svg>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[10px] text-text-muted mb-1">{"Today's Mind Stress Index"}</p>
-                <p className="text-sm font-medium text-warm-white group-hover:text-lavender-soft transition-colors">{"Let's find your baseline"}</p>
-                <p className="text-xs text-text-muted mt-0.5">Start questionnaire →</p>
-              </div>
-            </button>
-          </SoftCard>
-        ) : (
-          <>
-            <SoftCard delay={30}>
-              <div className="flex items-center gap-4 p-4">
-                <MsiGauge pct={currentMsi} color={gaugeColor} size={68} />
+            <div className="p-5">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-14 h-14 rounded-full bg-purple-core/10 border border-purple-core/20 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-6 h-6 text-purple-core" fill="none" viewBox="0 0 24 24">
+                    <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                  </svg>
+                </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <span className="text-[11px] leading-none">🌿</span>
-                    <p className="text-[9px] text-text-muted font-medium">
-                      {currentMsi != null ? "How you're doing right now" : `Baseline: ${baselineMsi}%`}
-                    </p>
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-purple-core/10 border border-purple-core/25 mb-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-purple-core animate-pulse" />
+                    <span className="text-[10px] font-semibold text-lavender-bright uppercase tracking-wider">Initial Calibration</span>
                   </div>
-                  <p className="text-[13px] font-semibold text-warm-white leading-snug mb-1">{headline}</p>
-                  <p className="text-xs text-text-muted leading-relaxed">{subtext}</p>
+                  <h3 className="text-base font-semibold text-warm-white">Complete Baseline MSI</h3>
+                  <p className="text-xs text-text-muted mt-0.5 leading-relaxed">
+                    Establish your personal stress baseline to unlock tailored tracking.
+                  </p>
                 </div>
               </div>
-            </SoftCard>
-            <div className="flex gap-2 animate-fade-up" style={{ animationDelay: "40ms" }}>
-              <button onClick={() => onNav("checkin-1")} className="flex-1 btn-primary py-3 rounded-2xl text-sm font-medium">
-                Check in
-              </button>
-              <button onClick={() => onNav("my-stress")} className="flex-1 py-3 rounded-2xl text-sm text-text-muted hover:text-text-secondary transition-colors" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
-                {"Understand it →"}
+
+              <button
+                onClick={() => onNav("baseline-msi")}
+                className="w-full btn-primary py-3.5 rounded-2xl text-sm font-semibold cursor-pointer shadow-lg shadow-purple-900/20"
+              >
+                Complete Baseline MSI →
               </button>
             </div>
-          </>
+          </SoftCard>
+        ) : (
+          <SoftCard delay={30}>
+            <div className="p-5 relative">
+              {/* Top Section Label */}
+              <div className="flex items-center justify-between gap-2 mb-3.5">
+                <p className="text-[11px] font-medium text-lavender-soft/80 flex items-center gap-1.5">
+                  <span>🌱</span>
+                  <span>{"How you're doing right now"}</span>
+                </p>
+              </div>
+
+              {/* Main Wellbeing Section: Circular Indicator on Left, Human Message on Right */}
+              <div className="flex items-start gap-4 mb-4">
+                <div className="flex-shrink-0 pt-0.5">
+                  <MsiGauge pct={displayScore} color={activeStressCat.gaugeColor} size={68} />
+                </div>
+                <div className="flex-1 min-w-0 pt-0.5 space-y-1">
+                  <p className="text-[15px] font-semibold text-warm-white leading-snug">
+                    {activeStressCat.title}
+                  </p>
+                  <p className="text-xs text-text-muted leading-relaxed">
+                    {activeStressCat.subtext}
+                  </p>
+                </div>
+              </div>
+
+              {/* Subtle Bottom Section inside same card */}
+              <div className="pt-3 border-t border-white/5 flex items-center justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  {isBaselineEligible ? (
+                    <button
+                      onClick={() => onNav("baseline-msi")}
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-lavender-bright hover:text-lavender-soft transition-colors cursor-pointer py-1"
+                    >
+                      <span>Update your baseline MSI</span>
+                      <span>→</span>
+                    </button>
+                  ) : (
+                    <div className="inline-flex items-center gap-1.5 text-xs text-text-muted select-none">
+                      <svg className="w-3.5 h-3.5 text-text-muted/70 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                      </svg>
+                      <span>
+                        Update your baseline MSI in {baselineRemainingDays} {baselineRemainingDays === 1 ? "day" : "days"}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Compact Understand it action at bottom right corner */}
+                <button
+                  onClick={() => onNav("my-stress")}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-text-muted/80 hover:text-lavender-bright transition-colors cursor-pointer py-1 px-1.5 rounded-md hover:bg-white/5 active:scale-95 flex-shrink-0"
+                >
+                  <span>Understand it</span>
+                  <span className="text-lavender-soft/70">→</span>
+                </button>
+              </div>
+            </div>
+          </SoftCard>
         )}
 
         {/* Let's understand this */}

@@ -43,7 +43,16 @@ const STEPS = [
     question: "Which department or team are you in?",
     note: "Select the closest match to your current team.",
     type: "choice",
-    options: ["Engineering", "Sales", "HR", "Operations", "Finance", "Marketing", "Customer Support", "Other"],
+    options: [
+      "Tech & Product",
+      "Sales & Marketing",
+      "Operations & Admin",
+      "Research & Innovation",
+      "Finance and Legal",
+      "Services / Delivery",
+      "People & Support",
+      "Other",
+    ],
   },
   {
     code: "D4",

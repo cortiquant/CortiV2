@@ -1,9 +1,10 @@
 import { useState, useRef } from "react"
+import { Link } from "react-router-dom"
 import logoSrc from "@/imports/image-2.png"
 
 interface LoginProps {
   onEmployeeSignIn: () => void
-  onCreateAccount: (name: string, username: string) => void
+  onCreateAccount: (name: string, username: string, email: string) => void
   onHR: () => void
   onBack: () => void
 }
@@ -112,18 +113,39 @@ function ReqItem({ met, label }: { met: boolean; label: string }) {
   )
 }
 
-function Checkbox({ checked, onChange, children }: { checked: boolean; onChange: () => void; children: React.ReactNode }) {
+function Checkbox({
+  checked,
+  onChange,
+  children,
+  id,
+}: {
+  checked: boolean
+  onChange: () => void
+  children: React.ReactNode
+  id?: string
+}) {
   return (
-    <button onClick={onChange} className="flex items-start gap-3 text-left group">
-      <div className={`w-4 h-4 mt-0.5 rounded flex-shrink-0 border transition-all ${checked ? "bg-purple-core border-purple-core" : "border-border-s bg-elevated group-hover:border-border-s"}`}>
+    <div className="flex items-start gap-3 text-left">
+      <button
+        type="button"
+        id={id}
+        role="checkbox"
+        aria-checked={checked}
+        onClick={onChange}
+        className={`w-4 h-4 mt-0.5 rounded flex-shrink-0 border transition-all cursor-pointer flex items-center justify-center ${
+          checked
+            ? "bg-purple-core border-purple-core"
+            : "border-border-s bg-elevated hover:border-border-s"
+        }`}
+      >
         {checked && (
           <svg className="w-full h-full text-warm-white p-0.5" fill="none" viewBox="0 0 12 12">
             <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         )}
-      </div>
-      <span className="text-xs text-text-muted leading-relaxed">{children}</span>
-    </button>
+      </button>
+      <div className="text-xs text-text-muted leading-relaxed select-text">{children}</div>
+    </div>
   )
 }
 
@@ -162,6 +184,7 @@ export default function Login({ onEmployeeSignIn, onCreateAccount, onHR, onBack 
   const [nameFocused, setNameFocused] = useState(false)
   const [usernameFocused2, setUsernameFocused2] = useState(false)
   const [emailFocused, setEmailFocused] = useState(false)
+  const [emailTouched, setEmailTouched] = useState(false)
   const [createPwFocused, setCreatePwFocused] = useState(false)
   const [confirmPwFocused, setConfirmPwFocused] = useState(false)
   const [agreePrivacy, setAgreePrivacy] = useState(false)
@@ -171,6 +194,8 @@ export default function Login({ onEmployeeSignIn, onCreateAccount, onHR, onBack 
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState("")
   const abortRef = useRef<AbortController | null>(null)
+
+  const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
 
   const pwReqs = {
     length: createPw.length >= 8,
@@ -308,6 +333,30 @@ export default function Login({ onEmployeeSignIn, onCreateAccount, onHR, onBack 
       return
     }
 
+    const cleanEmail = email.trim().toLowerCase()
+    if (!cleanEmail) {
+      setErrorMsg("Email address is required.")
+      return
+    }
+
+    if (!isEmailValid) {
+      setErrorMsg("Please provide a valid email address.")
+      return
+    }
+
+    if (!agreePrivacy && !agreeConsent) {
+      setErrorMsg("Please agree to both the Privacy Policy and Participant Consent Form to proceed.")
+      return
+    }
+    if (!agreePrivacy) {
+      setErrorMsg("Please read and agree to the Privacy Policy to create your account.")
+      return
+    }
+    if (!agreeConsent) {
+      setErrorMsg("Please read and agree to the Participant Consent Form to create your account.")
+      return
+    }
+
     setLoading(true)
     abortRef.current = new AbortController()
 
@@ -319,7 +368,7 @@ export default function Login({ onEmployeeSignIn, onCreateAccount, onHR, onBack 
           organisationCode: verifiedOrg.organisationCode,
           name: fullName.trim(),
           username: username.trim().toLowerCase(),
-          email: email.trim().toLowerCase() || undefined,
+          email: cleanEmail,
           password: createPw,
           privacyConsent: agreePrivacy,
           participantConsent: agreeConsent,
@@ -337,13 +386,14 @@ export default function Login({ onEmployeeSignIn, onCreateAccount, onHR, onBack 
       if (data.token) localStorage.setItem("cq_token", data.token)
       localStorage.setItem("cq_user_name", data.user.name)
       if (data.user.username) localStorage.setItem("cq_username", data.user.username)
+      if (data.user.email) localStorage.setItem("cq_user_email", data.user.email)
       localStorage.setItem("cq_user_id", data.user.id)
       localStorage.setItem("cq_org_id", data.user.organisationId)
       localStorage.setItem("cq_org_code", data.user.organisationCode)
       localStorage.setItem("cq_approval_status", "none")
       localStorage.setItem("cq_onboarding_status", "incomplete")
 
-      onCreateAccount(fullName, username)
+      onCreateAccount(fullName, username, cleanEmail)
     } catch (err: unknown) {
       if (err instanceof Error && err.name !== "AbortError") {
         setErrorMsg("Cannot connect to server. Please try again.")
@@ -582,17 +632,31 @@ export default function Login({ onEmployeeSignIn, onCreateAccount, onHR, onBack 
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-text-secondary mb-1.5">Email Address</label>
+                <label className="block text-xs font-semibold text-text-secondary mb-1.5">Email Address *</label>
                 <InputRow
                   icon={<EmailIcon focused={emailFocused} />}
                   type="email"
                   placeholder="name@company.com"
                   value={email}
-                  onChange={setEmail}
+                  onChange={(val) => {
+                    setEmail(val)
+                    if (errorMsg && (errorMsg.includes("email") || errorMsg.includes("Email"))) {
+                      setErrorMsg("")
+                    }
+                  }}
                   focused={emailFocused}
                   onFocus={() => setEmailFocused(true)}
-                  onBlur={() => setEmailFocused(false)}
+                  onBlur={() => {
+                    setEmailFocused(false)
+                    setEmailTouched(true)
+                  }}
                 />
+                {emailTouched && !email.trim() && (
+                  <p className="text-[11px] text-c-critical mt-1 px-1">Email address is required.</p>
+                )}
+                {emailTouched && email.trim() && !isEmailValid && (
+                  <p className="text-[11px] text-c-critical mt-1 px-1">Please enter a valid email address (e.g. name@company.com).</p>
+                )}
               </div>
 
               <div>
@@ -639,23 +703,48 @@ export default function Login({ onEmployeeSignIn, onCreateAccount, onHR, onBack 
 
             {/* Consent checkboxes */}
             <div className="card-elevated rounded-2xl px-4 py-4 space-y-3 mb-6">
-              <Checkbox checked={agreePrivacy} onChange={() => setAgreePrivacy(!agreePrivacy)}>
-                I have read and agree to the{" "}
-                <a href="/privacy-policy" target="_blank" rel="noreferrer" className="text-lavender-bright underline underline-offset-2">
+              <Checkbox
+                id="checkbox-privacy"
+                checked={agreePrivacy}
+                onChange={() => {
+                  setAgreePrivacy(!agreePrivacy)
+                  if (errorMsg && errorMsg.includes("Privacy Policy")) setErrorMsg("")
+                }}
+              >
+                I have read, understood, and agree to CortiQuant's{" "}
+                <Link
+                  to="/privacy-policy"
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-lavender-bright underline underline-offset-2 hover:text-warm-white transition-colors"
+                >
                   Privacy Policy
-                </a>.
+                </Link>{" "}
+                governing data protection and confidential handling.
               </Checkbox>
-              <Checkbox checked={agreeConsent} onChange={() => setAgreeConsent(!agreeConsent)}>
-                I have read and agree to the{" "}
-                <span className="text-lavender-bright underline underline-offset-2">
+
+              <Checkbox
+                id="checkbox-consent"
+                checked={agreeConsent}
+                onChange={() => {
+                  setAgreeConsent(!agreeConsent)
+                  if (errorMsg && errorMsg.includes("Participant Consent")) setErrorMsg("")
+                }}
+              >
+                I voluntarily agree to the terms in the{" "}
+                <Link
+                  to="/participant-consent"
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-lavender-bright underline underline-offset-2 hover:text-warm-white transition-colors"
+                >
                   Participant Consent Form
-                </span>.
+                </Link>{" "}
+                for the Pilot Testing Program.
               </Checkbox>
             </div>
 
             {/* Error message */}
             {errorMsg && (
-              <p className="text-xs text-c-critical bg-c-critical/10 border border-c-critical/25 rounded-xl px-4 py-2.5 mb-4">
+              <p className="text-xs text-c-critical bg-c-critical/10 border border-c-critical/25 rounded-xl px-4 py-2.5 mb-4 animate-shake">
                 {errorMsg}
               </p>
             )}
@@ -663,7 +752,7 @@ export default function Login({ onEmployeeSignIn, onCreateAccount, onHR, onBack 
             <button
               className="btn-primary w-full py-3.5 text-sm flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none cursor-pointer"
               onClick={handleCreateAccount}
-              disabled={loading || !agreePrivacy || !agreeConsent || !fullName.trim() || !username.trim() || !Object.values(pwReqs).every(Boolean) || createPw !== confirmPw}
+              disabled={loading || !fullName.trim() || !username.trim() || !email.trim() || !isEmailValid || !Object.values(pwReqs).every(Boolean) || createPw !== confirmPw}
             >
               {loading ? "Creating Account…" : "Create Account"}
               {!loading && (

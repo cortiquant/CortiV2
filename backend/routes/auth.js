@@ -6,6 +6,7 @@ const User = require("../models/User")
 const Organisation = require("../models/Organisation")
 const { logActivity } = require("../services/activityService")
 const { sendEmployeeApprovalNotification } = require("../services/notificationService")
+const { normalizeDepartmentName } = require("../services/departmentService")
 const { signToken, requireAuth, requireHR } = require("../middleware/auth")
 
 // ── Utility: generate an employeeId like "EMP-1001" ──────────────────────────
@@ -137,6 +138,9 @@ router.post("/employee/signup", async (req, res) => {
     if (!username || !username.trim()) {
       return res.status(400).json({ success: false, message: "Username is required." })
     }
+    if (!email || !email.trim()) {
+      return res.status(400).json({ success: false, message: "Email address is required." })
+    }
     if (!password) {
       return res.status(400).json({ success: false, message: "Password is required." })
     }
@@ -161,7 +165,15 @@ router.post("/employee/signup", async (req, res) => {
       })
     }
 
-    const cleanEmail = email && email.trim() ? email.trim().toLowerCase() : undefined
+    // ── Validate email format ─────────────────────────────────────────────
+    const cleanEmail = email.trim().toLowerCase()
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(cleanEmail)) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide a valid email address.",
+      })
+    }
 
     // ── Validate password strength ────────────────────────────────────────
     const pwRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/
@@ -198,6 +210,17 @@ router.post("/employee/signup", async (req, res) => {
       return res.status(409).json({
         success: false,
         message: "An account with this username already exists. Please choose another.",
+      })
+    }
+
+    // ── Check for duplicate email (case-insensitive) ──────────────────────
+    const existingEmail = await User.findOne({
+      email: cleanEmail,
+    })
+    if (existingEmail) {
+      return res.status(409).json({
+        success: false,
+        message: "An account with this email address already exists. Please use a different email or sign in.",
       })
     }
 
@@ -260,6 +283,13 @@ router.post("/employee/signup", async (req, res) => {
     if (err.code === 11000) {
       const keyPattern = err.keyPattern || {}
       const keyValue = err.keyValue || {}
+
+      if (keyPattern.email || keyValue.email !== undefined || (err.message && err.message.includes("email"))) {
+        return res.status(409).json({
+          success: false,
+          message: "An account with this email address already exists. Please use a different email or sign in.",
+        })
+      }
 
       if (keyPattern.username || keyValue.username !== undefined || (err.message && err.message.includes("username"))) {
         return res.status(409).json({
@@ -824,7 +854,8 @@ async function handleHRQueue(req, res) {
 
     const data = employees.map((e) => {
       const onb = onbMap.get(String(e._id))
-      const dept = e.department || onb?.participantProfile?.D3 || "Unassigned"
+      const rawDept = e.department || onb?.participantProfile?.D3 || "Unassigned"
+      const dept = normalizeDepartmentName(rawDept)
       const deptId = e.departmentId || null
       const isOnboardingComplete = e.onboardingCompleted || !!onb?.onboardingCompleted
       const onboardingCompletedAt = onb?.completedAt || null
@@ -1064,7 +1095,8 @@ async function handleGetHREmployees(req, res) {
 
     const data = employees.map((e) => {
       const onb = onbMap.get(String(e._id))
-      const dept = e.department || onb?.participantProfile?.D3 || "Unassigned"
+      const rawDept = e.department || onb?.participantProfile?.D3 || "Unassigned"
+      const dept = normalizeDepartmentName(rawDept)
       const deptId = e.departmentId || null
 
       let displayStatus = "pending"

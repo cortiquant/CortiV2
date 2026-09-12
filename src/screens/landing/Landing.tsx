@@ -73,9 +73,9 @@ function HeroIllustration() {
             </div>
             <div className="space-y-2">
               {[
-                { team: "Customer Support", val: 71, change: "+12%", color: "bg-c-warning" },
-                { team: "Engineering", val: 58, change: "+4%", color: "bg-lavender-bright" },
-                { team: "Sales", val: 53, change: "−2%", color: "bg-c-success" },
+                { team: "People & Support", val: 71, change: "+12%", color: "bg-c-warning" },
+                { team: "Tech & Product", val: 58, change: "+4%", color: "bg-lavender-bright" },
+                { team: "Sales & Marketing", val: 53, change: "−2%", color: "bg-c-success" },
               ].map((t) => (
                 <div key={t.team} className="flex items-center gap-3">
                   <div className="flex-1">
@@ -332,7 +332,7 @@ export default function Landing({ onGetStarted }: LandingProps) {
                   <p className="text-xs text-text-muted font-semibold uppercase tracking-widest mb-2">What changed this week</p>
                   <p className="text-sm text-text-secondary leading-relaxed">
                     Stress increased moderately across the workforce, with the largest change in{" "}
-                    <span className="text-lavender-soft font-medium">Customer Support</span>.
+                    <span className="text-lavender-soft font-medium">People & Support</span>.
                     Three weeks of elevated signal detected.
                   </p>
                   <p className="mt-3 text-xs text-text-muted">Real-time. Aggregated. Privacy-first.</p>

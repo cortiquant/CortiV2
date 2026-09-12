@@ -1,0 +1,448 @@
+TOTAL PAGES: 10
+
+=== PAGE 1 ===
+ 
+Cortiquant — Legal Documents Confidential 
+ 
+© 2026 Cortiquant. All rights reserved. Page 1  
+ 
+C O R T I Q U A N T 
+PRIVACY POLICY 
+Effective Date: June 2026  |  Version 1.0  |  Applies to: Cortiquant Mobile & Web Application 
+ 
+This Privacy Policy explains what personal and health data Cortiquant collects, why we 
+collect it, how we use and protect it, and your rights over your data. Please read this 
+carefully before using the Cortiquant platform. 
+ 
+1. WHO WE ARE 
+ 
+Cortiquant ("we", "us", "our") is a healthtech company developing an AI-powered workplace 
+stress analytics platform.For privacy-related queries, contact us at: cortiqsupport@gmail.com  
+ 
+ 
+2. WHAT DATA WE COLLECT 
+ 
+2.1 Personal Identification Data 
+• Employment information — organisation name, job title, department, and work location 
+• Account credentials — username and encrypted password 
+ 
+2.2 Health & Biological Data 
+This is the most sensitive category of data we collect. We handle it with the highest level of 
+care, encryption, and access controls. 
+• Mind-Body Stress Index scores — AI-generated composite stress scores derived from 
+biomarker and psychometric inputs 
+• Burnout risk ratings — individual and longitudinal burnout risk classifications generated 
+by the platform 
+ 
+2.3 Psychometric & Self-Report Data 
+• Perceived Stress Scale (PSS-10) responses and total scores 
+• Mood and affect assessment responses 
+
+
+=== PAGE 2 ===
+ 
+Cortiquant — Legal Documents Confidential 
+ 
+© 2026 Cortiquant. All rights reserved. Page 2  
+ 
+2.4 Usage & Technical Data 
+• Device type, operating system, browser type, and IP address 
+• Login timestamps, session duration, and in-app activity logs 
+• Crash reports and error logs (anonymized) for platform improvement 
+ 
+ 
+3. WHY WE COLLECT YOUR DATA — PURPOSES OF PROCESSING 
+ 
+We collect and process your data only for the following specific, legitimate purposes: 
+ 
+1. To generate your personalised Mind-Body Stress Index and provide you with your 
+stress score, trend analysis, and burnout risk indicators through the platform dashboard. 
+2. To enable your employer's HR team to view anonymised, aggregated workforce stress 
+trends — individual data is never shared with your employer without your explicit 
+consent. 
+3. To train and improve Cortiquant's AI stress prediction model using anonymised, 
+aggregated data — we will never use your identifiable data for model training without 
+your prior written consent. 
+4. To communicate with you about your account, results, platform updates, and wellness 
+resources. 
+5. To comply with applicable laws, including India's Digital Personal Data Protection 
+(DPDP) Act, 2023. 
+ 
+ 
+4. LEGAL BASIS FOR PROCESSING 
+ 
+We process your data on the following legal grounds under India's DPDP Act, 2023 and 
+applicable regulations: 
+• Explicit Informed Consent — you provide consent at account registration and before 
+each biomarker test or psychometric assessment. Consent is specific, informed, and 
+freely given. 
+• Contractual Necessity — processing necessary to provide you the services you have 
+agreed to use. 
+• Legitimate Interest — anonymised, aggregated data used for product improvement and 
+research, where your fundamental rights are not overridden. 
+• Legal Compliance — processing required to comply with applicable Indian laws and 
+regulations. 
+ 
+ 
+ 
+
+=== PAGE 3 ===
+ 
+Cortiquant — Legal Documents Confidential 
+ 
+© 2026 Cortiquant. All rights reserved. Page 3  
+5. HOW WE SHARE YOUR DATA 
+ 
+Cortiquant does not sell, rent, or trade your personal or health data to any third party. Ever. 
+ 
+5.1 With Your Employer 
+Your employer's HR dashboard shows only anonymised, aggregated workforce-level data (e.g., 
+average stress index by department). Your individual score, biomarker values, and psychometric 
+responses are NEVER shared with your employer without your explicit, specific, written consent. 
+ 
+5.2 With Laboratory Partners 
+If biomarker blood testing is facilitated through the platform, your blood sample and minimum 
+necessary information (anonymised participant ID, test type) is shared with our certified 
+laboratory partners solely for the purpose of conducting the agreed tests. 
+ 
+5.3 With Technology Service Providers 
+We use AWS (Amazon Web Services) for cloud hosting and data storage. AWS processes data 
+on our behalf under a Data Processing Agreement and does not have independent access to 
+your identifiable data. 
+ 
+5.4 Legal Disclosure 
+We may disclose your data if required by a court order, applicable law, or government authority. 
+We will notify you of any such requirement unless legally prohibited from doing so. 
+ 
+ 
+6. HEALTH DATA — SPECIAL PROTECTIONS 
+ 
+Biological and psychological health data is classified as Sensitive Personal Data under Indian 
+law and receives the following additional protections on the Cortiquant platform: 
+• Encryption at rest (AES-256) and in transit (TLS 1.2+) for all health data stored on AWS 
+infrastructure 
+• Role-based access control — only you and explicitly authorised Cortiquant personnel 
+with a legitimate need can access your identifiable health data 
+• Health data is stored in a separate, access-controlled database tier segregated from 
+general platform data 
+• No health data is used for advertising, marketing profiling, or sold to any third party 
+ 
+ 
+
+=== PAGE 4 ===
+ 
+Cortiquant — Legal Documents Confidential 
+ 
+© 2026 Cortiquant. All rights reserved. Page 4  
+7. DATA RETENTION 
+ 
+We retain your data only for as long as necessary for the purposes described in this Policy: 
+• Account and profile data: Retained for the duration of your active account  
+• Individual health data (biomarker results, PSS scores, Stress Index): Retained till the 
+time you have active account 
+• Anonymised aggregated data: May be retained indefinitely for research and product 
+improvement 
+• Audit and activity logs: Retained for 2 months for security and compliance purposes 
+Upon expiry of retention periods or upon your valid deletion request, data is permanently deleted 
+from all production and backup systems within 30 days. 
+ 
+ 
+8. YOUR RIGHTS UNDER INDIA'S DPDP ACT, 2023 
+ 
+As a Data Principal under India's Digital Personal Data Protection Act, 2023, you have the 
+following rights: 
+• Right to Access — you may request a summary of what personal data we hold about 
+you and how it is being processed 
+• Right to Correction — you may request correction of inaccurate or incomplete personal 
+data 
+• Right to Erasure — you may request deletion of your personal data, subject to legal 
+retention obligations 
+• Right to Withdraw Consent — you may withdraw your consent to data processing at any 
+time; this will not affect the lawfulness of processing before withdrawal but will require 
+account closure 
+• Right to Grievance Redressal — you may raise a complaint with our Data Protection 
+Officer (DPO) and, if unresolved, with the Data Protection Board of India 
+ 
+To exercise any of these rights, email us at: cortiqsupport@gmail.com . We will respond within 
+30 days. 
+ 
+ 
+9. COOKIES & TRACKING 
+ 
+The Cortiquant web application uses the following types of cookies and tracking technologies: 
+• Essential cookies — required for login, session management, and security. Cannot be 
+disabled. 
+• Analytics cookies — anonymised usage data to improve platform performance (e.g., 
+Google Analytics). You may opt out. 
+• Preference cookies — remember your dashboard settings and language preferences. 
+
+=== PAGE 5 ===
+ 
+Cortiquant — Legal Documents Confidential 
+ 
+© 2026 Cortiquant. All rights reserved. Page 5  
+We do not use advertising cookies, third-party tracking pixels, or behavioural profiling cookies. 
+You can manage cookie preferences through your browser settings or the in-app cookie consent 
+banner. 
+ 
+ 
+10. CHILDREN'S DATA 
+ 
+The Cortiquant platform is intended for working adults aged 18 years and above. We do not 
+knowingly collect personal or health data from anyone under the age of 18. If we discover that 
+data from a minor has been collected, we will delete it immediately. If you believe a minor has 
+accessed the platform, please contact us at cortiqsupport@gmail.com . 
+ 
+ 
+11. CHANGES TO THIS PRIVACY POLICY 
+ 
+We may update this Privacy Policy from time to time to reflect changes in law, technology, or our 
+practices. We will notify you of material changes via email or an in-app notification at least 14 
+days before the change takes effect. Continued use of the platform after the effective date 
+constitutes acceptance of the revised Policy. 
+ 
+ 
+12. CONTACT & GRIEVANCE OFFICER 
+ 
+For any privacy-related questions, data requests, or complaints, contact our Data Protection 
+Officer: 
+ 
+Soham Kadam 
+Data Protection Officer & Co-Founder, Cortiquant 
+Email: cortiqsupport@gmail.com    |  Phone: +91-9833631026 
+ 
+Mrunal Kulkarni 
+Founder, Cortiquant 
+Email: cortiqsupport@gmail.com    |  Phone: +91-9834149518 
+ 
+We aim to respond to all privacy queries within 30 days of receipt. 
+ 
+ 
+ 
+ 
+
+=== PAGE 6 ===
+ 
+Cortiquant — Legal Documents Confidential 
+ 
+© 2026 Cortiquant. All rights reserved. Page 6  
+C O R T I Q U A N T 
+TERMS AND CONDITIONS OF USE 
+Effective Date: June 2026  |  Version 1.0  |  Applies to: Cortiquant Mobile & Web Application 
+ 
+By creating an account, downloading the application, or using any part of the Cortiquant 
+platform, you agree to be bound by these Terms and Conditions. If you do not agree, do not 
+use the platform. 
+ 
+1. ACCEPTANCE OF TERMS 
+ 
+These Terms and Conditions ("Terms") constitute a legally binding agreement between you 
+("User") and Cortiquant ("Company", "we", "us", "our") governing your access to and use of the 
+Cortiquant mobile and web application, platform, services, and all associated features 
+(collectively, the "Platform"). By registering, accessing, or using the Platform, you confirm that 
+you are at least 18 years of age, have read and understood these Terms, and agree to comply 
+with them. 
+ 
+ 
+2. DESCRIPTION OF THE PLATFORM 
+ 
+Cortiquant is an AI-powered workplace stress analytics platform that generates a Mind-Body 
+Stress Index by combining: 
+• Standardised psychometric assessments (Perceived Stress Scale PSS-10, mood 
+inventories) 
+• A proprietary machine learning model that generates a personalised stress score and 
+burnout risk rating 
+The Platform provides individual stress dashboards, longitudinal tracking, wellness 
+recommendations, and an aggregated HR analytics dashboard for authorised employer 
+representatives. 
+ 
+ 
+3. ACCOUNT REGISTRATION & SECURITY 
+ 
+• You must provide accurate, complete, and current information at registration and keep it 
+updated. 
+• You are responsible for maintaining the confidentiality of your login credentials. You 
+agree to notify Cortiquant immediately at cortiqsupport@gmail.com  if you suspect 
+unauthorised access to your account. 
+
+=== PAGE 7 ===
+ 
+Cortiquant — Legal Documents Confidential 
+ 
+© 2026 Cortiquant. All rights reserved. Page 7  
+• Cortiquant reserves the right to suspend or terminate accounts that are found to be 
+providing false information 
+• You may not create more than one account per individual or share your account 
+credentials with any other person. 
+ 
+ 
+4. HEALTH DATA & MEDICAL DISCLAIMER 
+ 
+IMPORTANT: The Cortiquant platform is a wellness monitoring tool. It is NOT a medical 
+device, clinical diagnostic service, or healthcare provider. The Mind-Body Stress Index is 
+NOT a medical diagnosis. 
+ 
+• All stress scores, burnout risk ratings, biomarker interpretations, and recommendations 
+provided by the Platform are for informational and wellness purposes only. 
+• Platform outputs do not constitute medical advice, diagnosis, prescription, or treatment 
+and must not be used as a substitute for consultation with a qualified medical or mental 
+health professional. 
+• If you are experiencing a mental health crisis, severe anxiety, depression, or any acute 
+health concern, please seek immediate professional medical help or contact a crisis 
+helpline. 
+• Cortiquant does not establish a physician-patient relationship or any therapeutic 
+relationship with any User. 
+ 
+ 
+5. INFORMED CONSENT FOR DATA COLLECTION 
+ 
+By using the Platform, you provide informed consent to the following: 
+• Collection and processing of your personal and health data as described in the Privacy 
+Policy 
+• Administration of psychometric assessments (PSS-10 and mood surveys) as part of the 
+stress measurement process 
+• Sharing of anonymised, aggregated (non-identifiable) data with your employer's HR 
+dashboard for workforce wellness monitoring 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+=== PAGE 8 ===
+ 
+Cortiquant — Legal Documents Confidential 
+ 
+© 2026 Cortiquant. All rights reserved. Page 8  
+6. EMPLOYER ACCESS & INDIVIDUAL PRIVACY 
+ 
+If you access Cortiquant through your employer's corporate subscription, the following rules 
+govern what your employer can and cannot see: 
+What Your Employer CAN See: 
+• Anonymised, aggregated departmental or organisational stress trends (average scores, 
+burnout risk distribution) 
+• Workforce-level insights with a minimum anonymisation threshold of 5 individuals per 
+data point 
+What Your Employer CANNOT See (Without Your Explicit Written Consent): 
+• Your individual Mind-Body Stress Index score 
+• Your psychometric assessment responses or scores 
+• Your identity linked to any stress data point 
+Cortiquant will NEVER allow employers to access identifiable individual health data without 
+the express written consent of the individual user. Employer access is limited to anonymised 
+aggregate analytics only. 
+ 
+ 
+7. ACCEPTABLE USE 
+ 
+You agree to use the Platform only for lawful, personal wellness monitoring purposes and agree 
+NOT to: 
+• Provide false health data, fabricate biomarker results, or manipulate your psychometric 
+responses 
+• Attempt to access another user's account, health data, or stress scores 
+• Reverse engineer, decompile, or attempt to extract the source code or AI model logic of 
+the Platform 
+• Use the Platform for any commercial purpose without Cortiquant's prior written consent 
+• Share your individual health data received through the Platform with third parties in a 
+manner that violates the Privacy Policy 
+• Use the Platform to develop a competing product or service 
+• Post, upload, or transmit any content that is harmful, offensive, or unlawful 
+ 
+ 
+ 
+ 
+ 
+ 
+
+=== PAGE 9 ===
+ 
+Cortiquant — Legal Documents Confidential 
+ 
+© 2026 Cortiquant. All rights reserved. Page 9  
+8. INTELLECTUAL PROPERTY 
+ 
+All content, features, software, AI models, algorithms, the Mind-Body Stress Index methodology, 
+visual design, trademarks, logos (including the CortiQuant logo), and all other intellectual 
+property on or within the Platform are the exclusive property of Cortiquant. You are granted a 
+limited, non-exclusive, non-transferable licence to use the Platform for your personal wellness 
+monitoring purposes only. This licence does not include any right to: 
+• Copy, reproduce, or redistribute any Platform content or intellectual property 
+• Use Cortiquant's name, logo, or brand in any public communication without prior written 
+consent 
+• Build any application, model, or product based on Cortiquant's IP or outputs 
+ 
+ 
+9. LIMITATION OF LIABILITY 
+ 
+To the maximum extent permitted by Indian law:. 
+• Cortiquant is not liable for any indirect, incidental, consequential, punitive, or special 
+damages including loss of health data, employment consequences, or decisions made 
+based on Platform outputs. 
+• Cortiquant is not responsible for any clinical consequences of decisions made by Users 
+or employers based on the Platform's stress scores or wellness recommendations. 
+• Cortiquant is not liable for service interruptions caused by force majeure events, third-
+party infrastructure failures, or circumstances outside its reasonable control. 
+ 
+ 
+10. THIRD-PARTY SERVICES & LINKS 
+ 
+The Platform may integrate with or link to third-party services including laboratory partners, 
+wellness resource providers, and cloud infrastructure (AWS). Cortiquant is not responsible for 
+the privacy practices, content, or availability of third-party services. Use of third-party services is 
+governed by their own terms and conditions. 
+ 
+ 
+11. MENTAL HEALTH EMERGENCY DISCLAIMER 
+ 
+If you are experiencing a mental health crisis, suicidal thoughts, or any acute psychological 
+emergency, please do not rely on this platform. Contact iCall (9152987821), Vandrevala 
+Foundation (1860-2662-345), or your nearest hospital emergency immediately. 
+Cortiquant's Active Listener feature (where available) is a peer support service — it is not a crisis 
+intervention service and is not a substitute for professional mental health care. 
+
+=== PAGE 10 ===
+ 
+Cortiquant — Legal Documents Confidential 
+ 
+© 2026 Cortiquant. All rights reserved. Page 10  
+ 
+ 
+ 
+12. CHANGES TO THESE TERMS 
+ 
+Cortiquant reserves the right to modify these Terms at any time. We will notify you of material 
+changes via in-app notification or email at least 14 days before the effective date. Continued use 
+of the Platform after the effective date constitutes acceptance of the revised Terms. If you do not 
+agree to the changes, you must close your account before the effective date. 
+ 
+ 
+13. GOVERNING LAW & DISPUTE RESOLUTION 
+ 
+These Terms are governed by the laws of India. Any dispute arising from or in connection with 
+these Terms shall first be subject to a 30-day good-faith negotiation period. If unresolved, 
+disputes shall be referred to binding arbitration under the Arbitration and Conciliation Act, 1996, 
+seated in Pune, Maharashtra, India. Nothing in this clause prevents either party from seeking 
+urgent injunctive relief from a competent court. 
+ 
+ 
+14. SEVERABILITY & ENTIRE AGREEMENT 
+ 
+• If any provision of these Terms is found to be unenforceable, the remaining provisions 
+continue in full force and effect. 
+• These Terms, together with the Privacy Policy, constitute the entire agreement between 
+you and Cortiquant regarding your use of the Platform. 
+• Cortiquant's failure to enforce any provision at any time does not constitute a waiver of 
+its right to enforce it in the future. 
+ 
+ 
+15. CONTACT US 
+ 
+For any questions, complaints, or feedback regarding these Terms or the Platform: 
+ 
+Cortiquant 
+Email: cortiquant121026@gmail.com   |  Support: cortiqsupport@gmail.com   
+By using the Cortiquant platform, you acknowledge that you have read, understood, and agreed 
+to both this Privacy Policy and these Terms and Conditions. 
+

@@ -13,6 +13,7 @@ const { ensureDepartmentsForOrg } = require("../services/departmentService")
 const { ensureInterventionsForOrg } = require("../services/interventionService")
 const { generateReportInsights } = require("../services/aiReportInsightService")
 const { generateDocxReport } = require("../services/reportGenerator")
+const { mapMsiToStressState } = require("../services/msiClassification")
 
 // Helper: Resolve organisation for authenticated HR
 async function resolveHROrg(req) {
@@ -27,13 +28,7 @@ async function resolveHROrg(req) {
   })
 }
 
-function mapMsiToState(msi) {
-  if (msi == null) return "normal"
-  if (msi <= 40) return "normal"
-  if (msi <= 60) return "acute"
-  if (msi <= 80) return "persistent"
-  return "burnout-risk"
-}
+const mapMsiToState = mapMsiToStressState
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/hr/reports

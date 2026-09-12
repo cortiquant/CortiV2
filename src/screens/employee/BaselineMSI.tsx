@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { getMSIBand } from "../../utils/msiClassification"
 
 interface BaselineMSIProps {
   onComplete: () => void
@@ -76,11 +77,8 @@ function calcMSI(answers: (number | null)[]): number {
 }
 
 function getBandLabel(msi: number) {
-  if (msi <= 20) return { label: "Healthy",  color: "text-c-success" }
-  if (msi <= 40) return { label: "Mild",     color: "text-c-info" }
-  if (msi <= 60) return { label: "Moderate", color: "text-lavender-soft" }
-  if (msi <= 80) return { label: "High",     color: "text-c-warning" }
-  return           { label: "Burnout",   color: "text-c-critical" }
+  const band = getMSIBand(msi)
+  return { label: band.label, color: band.color }
 }
 
 export default function BaselineMSI({ onComplete, onBack }: BaselineMSIProps) {
@@ -88,6 +86,10 @@ export default function BaselineMSI({ onComplete, onBack }: BaselineMSIProps) {
   const [step, setStep] = useState(0)
   const [answers, setAnswers] = useState<(number | null)[]>(Array(QUESTIONS.length).fill(null))
   const [serverBaseline, setServerBaseline] = useState<number | null>(null)
+  const [isUpdateFlow, setIsUpdateFlow] = useState<boolean>(() => {
+    return localStorage.getItem("cq_baseline_msi") != null
+  })
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   const q = QUESTIONS[step]
   const section = SECTIONS.find((s) => s.id === q?.section)!
@@ -95,6 +97,7 @@ export default function BaselineMSI({ onComplete, onBack }: BaselineMSIProps) {
 
   async function submitBaselineToBackend(finalAnswers: number[]) {
     setStage("calculating")
+    setErrorMessage(null)
     const localScore = calcMSI(finalAnswers)
 
     try {
@@ -113,6 +116,16 @@ export default function BaselineMSI({ onComplete, onBack }: BaselineMSIProps) {
           const msiVal = data.data.baselineMsi ?? localScore
           setServerBaseline(msiVal)
           localStorage.setItem("cq_baseline_msi", String(msiVal))
+          if (data.data.nextBaselineMsiDate) {
+            localStorage.setItem("cq_next_baseline_date", data.data.nextBaselineMsiDate)
+          }
+          if (data.data.lastBaselineMsiDate) {
+            localStorage.setItem("cq_last_baseline_date", data.data.lastBaselineMsiDate)
+          }
+        } else if (!res.ok && data.message) {
+          setErrorMessage(data.message)
+          setStage("intro")
+          return
         } else {
           setServerBaseline(localScore)
           localStorage.setItem("cq_baseline_msi", String(localScore))
@@ -162,20 +175,19 @@ export default function BaselineMSI({ onComplete, onBack }: BaselineMSIProps) {
   /* ── Intro ── */
   if (stage === "intro") {
     return (
-      <div className="flex-1 flex flex-col px-5 py-6 overflow-y-auto">
+      <div className="flex-1 flex flex-col px-5 pt-6 pb-[calc(7.5rem+env(safe-area-inset-bottom,0px))] overflow-y-auto">
         <div className="flex items-center justify-between mb-8">
           <div className="inline-flex items-center gap-2 bg-purple-core/10 border border-purple-core/25 rounded-full px-3 py-1">
             <div className="w-1.5 h-1.5 rounded-full bg-purple-core animate-pulse-dot" />
-            <span className="text-[10px] font-semibold text-lavender-bright uppercase tracking-wider">First-Time Setup</span>
+            <span className="text-[10px] font-semibold text-lavender-bright uppercase tracking-wider">
+              {isUpdateFlow ? "Weekly Calibration" : "First-Time Setup"}
+            </span>
           </div>
           <button
-            onClick={() => {
-              localStorage.clear()
-              window.location.href = "/company-login"
-            }}
+            onClick={onBack}
             className="text-xs font-semibold text-text-muted hover:text-warm-white transition-colors cursor-pointer"
           >
-            Logout
+            ← Back to Home
           </button>
         </div>
 
@@ -186,18 +198,30 @@ export default function BaselineMSI({ onComplete, onBack }: BaselineMSIProps) {
             </svg>
           </div>
 
-          <h1 className="text-2xl font-bold text-warm-white mb-3">Let's Find Your Baseline</h1>
+          <h1 className="text-2xl font-bold text-warm-white mb-3">
+            {isUpdateFlow ? "Update Your Baseline MSI" : "Let's Find Your Baseline"}
+          </h1>
           <p className="text-base text-lavender-soft font-medium mb-3">
-            Before we start tracking your daily stress, let's establish your personal baseline.
+            {isUpdateFlow
+              ? "Re-calibrate your personal baseline stress index with your weekly check-in."
+              : "Before we start tracking your daily stress, let's establish your personal baseline."}
           </p>
           <p className="text-sm text-text-muted leading-relaxed mb-8">
-            This initial assessment establishes your personal baseline stress level. Your future check-ins will be measured against this score so you can see meaningful shifts in your mental energy over time.
+            {isUpdateFlow
+              ? "Your baseline calibrates your personal stress reference point. Updating it every 7 days keeps your stress measurements aligned with your current life rhythm."
+              : "This initial assessment establishes your personal baseline stress level. Your future check-ins will be measured against this score so you can see meaningful shifts in your mental energy over time."}
           </p>
+
+          {errorMessage && (
+            <div className="mb-6 p-4 rounded-2xl bg-c-warning/10 border border-c-warning/30 text-left">
+              <p className="text-xs font-medium text-c-warning">{errorMessage}</p>
+            </div>
+          )}
 
           <div className="card-base p-4 mb-8 text-left space-y-2.5">
             <div className="flex items-center gap-2.5 text-xs text-text-secondary">
               <span className="text-lavender-soft">✓</span>
-              <span>16 quick scenario questions</span>
+              <span>16 calibrated questions across Mood, Stress, Recovery & Physical</span>
             </div>
             <div className="flex items-center gap-2.5 text-xs text-text-secondary">
               <span className="text-lavender-soft">✓</span>
@@ -213,7 +237,7 @@ export default function BaselineMSI({ onComplete, onBack }: BaselineMSIProps) {
             onClick={() => setStage("quiz")}
             className="btn-primary w-full py-4 text-sm font-semibold rounded-2xl cursor-pointer"
           >
-            Begin Assessment →
+            {isUpdateFlow ? "Begin Weekly Update →" : "Begin Assessment →"}
           </button>
         </div>
       </div>
@@ -241,18 +265,22 @@ export default function BaselineMSI({ onComplete, onBack }: BaselineMSIProps) {
   /* ── Result ── */
   if (stage === "done") {
     return (
-      <div className="flex-1 flex flex-col px-5 py-6 overflow-y-auto">
+      <div className="flex-1 flex flex-col px-5 pt-6 pb-[calc(7.5rem+env(safe-area-inset-bottom,0px))] overflow-y-auto">
         <div className="flex-1 flex flex-col items-center justify-center text-center">
           <div className="inline-flex items-center gap-2 bg-purple-core/10 border border-purple-core/25 rounded-full px-4 py-1.5 mb-6">
             <div className="w-1.5 h-1.5 rounded-full bg-purple-core animate-pulse-dot" />
-            <span className="text-xs font-semibold text-lavender-bright uppercase tracking-widest">Baseline Established</span>
+            <span className="text-xs font-semibold text-lavender-bright uppercase tracking-widest">
+              {isUpdateFlow ? "Baseline Updated" : "Baseline Established"}
+            </span>
           </div>
 
           <p className="text-sm text-text-muted font-semibold uppercase tracking-widest mb-2">Your Baseline MSI</p>
           <p className="font-mono-data text-7xl font-bold text-warm-white leading-none mb-2">{baseline}</p>
           <p className={`text-base font-semibold mb-4 ${baselineState.color}`}>{baselineState.label}</p>
-          <p className="text-sm text-text-secondary leading-relaxed max-w-[260px] mb-8">
-            This is your personal stress baseline. Future check-ins will be compared against this score to show how your stress shifts over time.
+          <p className="text-sm text-text-secondary leading-relaxed max-w-[280px] mb-8">
+            {isUpdateFlow
+              ? "Your baseline has been updated. Your daily check-ins will now be compared against this new score for the next 7 days."
+              : "This is your personal stress baseline. Future check-ins will be compared against this score to show how your stress shifts over time."}
           </p>
 
           {/* Domain summary */}
@@ -287,7 +315,7 @@ export default function BaselineMSI({ onComplete, onBack }: BaselineMSIProps) {
   const totalInSection = QUESTIONS.filter(q2 => q2.section === q.section).length
 
   return (
-    <div className="flex-1 flex flex-col px-5 py-4 overflow-y-auto">
+    <div className="flex-1 flex flex-col px-5 pt-4 pb-[calc(7.5rem+env(safe-area-inset-bottom,0px))] overflow-y-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <button onClick={handleBack} className="w-8 h-8 flex items-center justify-center text-text-muted hover:text-text-secondary transition-colors">

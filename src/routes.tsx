@@ -11,6 +11,8 @@ import FounderApp from "@/screens/founder/FounderApp"
 import ListenerApp, { ActiveSessionScreen } from "@/screens/listener/ListenerApp"
 import AcceptInvitation from "@/screens/auth/AcceptInvitation"
 import ListenerAcceptInvite from "@/screens/auth/ListenerAcceptInvite"
+import PrivacyPolicyScreen from "@/screens/legal/PrivacyPolicy"
+import ParticipantConsentScreen from "@/screens/legal/ParticipantConsent"
 import logoSrc from "@/imports/image-2.png"
 
 // ── Auth & Storage Helpers ───────────────────────────────────────────────────
@@ -344,28 +346,6 @@ function ApprovalRejectedScreen() {
   )
 }
 
-function PrivacyPolicyScreen() {
-  const navigate = useNavigate()
-  return (
-    <div className="min-h-full bg-midnight px-6 py-12 flex justify-center">
-      <div className="max-w-2xl w-full">
-        <button onClick={() => navigate(-1)} className="btn-ghost px-4 py-2 text-xs mb-6 inline-flex items-center gap-1.5">
-          &larr; Back
-        </button>
-        <div className="card-base p-8">
-          <h1 className="text-2xl font-bold text-warm-white mb-4">Privacy Policy</h1>
-          <p className="text-sm text-text-muted leading-relaxed mb-4">
-            CortiQuant takes individual privacy seriously. Individual mental health and stress scores are strictly confidential and encrypted end-to-end.
-          </p>
-          <p className="text-sm text-text-muted leading-relaxed">
-            Employers receive only aggregated, anonymized insights with strict privacy thresholds (minimum cohort sizes) to protect employee identities.
-          </p>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function AcceptInviteScreen() {
   const navigate = useNavigate()
   return (
@@ -448,8 +428,9 @@ function CompanyLoginScreen() {
     }
   }
 
-  function handleCreateAccount(name: string, email: string) {
+  function handleCreateAccount(name: string, username: string, email: string) {
     localStorage.setItem("cq_user_name", name)
+    localStorage.setItem("cq_username", username)
     localStorage.setItem("cq_user_email", email)
     localStorage.setItem("cq_onboarding_status", "incomplete")
     localStorage.setItem("cq_approval_status", "none")
@@ -546,6 +527,10 @@ export const router = createBrowserRouter([
       {
         path: "privacy-policy",
         Component: PrivacyPolicyScreen,
+      },
+      {
+        path: "participant-consent",
+        Component: ParticipantConsentScreen,
       },
       {
         path: "individual",

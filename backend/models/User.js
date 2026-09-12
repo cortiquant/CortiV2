@@ -19,6 +19,8 @@ const userSchema = new mongoose.Schema(
 
     email: {
       type: String,
+      required: [true, "Email address is required"],
+      unique: true,
       sparse: true,
       lowercase: true,
       trim: true,
@@ -143,7 +145,7 @@ const userSchema = new mongoose.Schema(
       default: false,
     },
 
-    // ── First-time Baseline Stress Index (MSI) tracking ─────────────────────
+    // ── Baseline Stress Index (MSI) tracking & weekly updates ───────────────
     baselineMsi: {
       type: Number,
       min: 0,
@@ -154,6 +156,29 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    lastBaselineMsiDate: {
+      type: Date,
+      default: null,
+    },
+    nextBaselineMsiDate: {
+      type: Date,
+      default: null,
+    },
+    baselineMsiHistory: [
+      {
+        score: {
+          type: Number,
+          required: true,
+          min: 0,
+          max: 100,
+        },
+        completedAt: {
+          type: Date,
+          required: true,
+          default: Date.now,
+        },
+      },
+    ],
 
     // ── Employee Settings (persisted across sessions & devices) ─────────────
     settings: {

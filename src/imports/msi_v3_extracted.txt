@@ -1,0 +1,212 @@
+=== PAGE 1 ===
+CortiQuant 
+Mind Stress Index (MSI) — v3 
+Instrument Design, Scoring Logic, and Scientific Credibility Report 
+This document details the final 16-item Mind Stress Index (MSI v3), the reasoning behind its structure, 
+the scoring formula and matrix used to derive a composite stress score, and the scientific validation 
+design intended to establish its credibility as a self-report stress-screening instrument. 
+  
+
+=== PAGE 2 ===
+1. Overview of the MSI v3 
+The Mind Stress Index (MSI) is a 16-item self-report instrument developed by CortiQuant to screen for 
+workplace and academic stress. It is organised into four subscales, each capturing a distinct dimension 
+of the stress experience: 
+• Mood — recent emotional state (past week) 
+• Stress Load — perceived pressure, control, and overload (past month) 
+• Recovery & Support — ability to bounce back and access to social support (past month) 
+• Physical — bodily/somatic symptoms of stress (past week) 
+Each subscale contains 4 items, chosen as the minimum item count that permits a statistically stable 
+estimate of internal consistency (Cronbach's alpha) while keeping respondent burden low. All items 
+are written in plain, single-clause language (under 10 words each) and use a uniform 5-point frequency 
+response format, with the exception of one emoji-based mood item retained for engagement and 
+ease of response. 
+2. Final Item List 
+Mood (reference period: past week) 
+• M1 — "How's your mood been?" (emoji scale: 뇤뉤뉥눷 뇤눨눩눪눫눬 덞덛덟덜덝 뇤뇪뇫뇥뇦 뽹뽸뽺뽻뽼) 
+• M2 — "I've felt low or down." 
+• M3 — "I've felt worried or on edge." 
+• M4 — "I've struggled to feel calm or relaxed." 
+Stress Load (reference period: past month) 
+• S1 — "I've felt nervous or stressed." 
+• S2 — "I've felt unable to control important things in my life." 
+• S3 — "I've felt like I had too much to handle." 
+• S4 — "Small problems have felt bigger than they are." 
+Recovery & Support (reference period: past month) 
+• R1 — "It's taken me a while to feel okay after something stressful." 
+• R2 — "I've struggled to relax even when I had time to." 
+• R3 — "I haven't had anyone to talk to when things got hard." 
+• R4 — "I've felt overwhelmed by everyday tasks." 
+Physical (reference period: past week) 
+• PH1 — "I've felt tense or on edge in my body." 
+• PH2 — "I've had headaches or tight shoulders/neck." 
+• PH3 — "I've felt tired even after resting." 
+• PH4 — "My stomach or sleep has been off." 
+
+=== PAGE 3 ===
+Response options (M2–M4, S1–S4, R1–R4, PH1–PH4): Never / Rarely / Sometimes / Often / Always. All 
+items are worded uni-directionally — higher frequency always indicates greater distress — eliminating 
+the need for reverse-scoring on 15 of the 16 items. 
+3. Design Logic 
+3.1 Why four subscales 
+Stress is not a single homogenous experience; established models of stress (e.g., transactional stress 
+theory, Lazarus & Folkman, 1984) distinguish between the emotional, cognitive-appraisal, 
+physiological, and coping/resource dimensions of the stress response. The four MSI subscales map 
+onto this structure: Mood (emotional), Stress Load (cognitive appraisal), Physical (physiological), and 
+Recovery & Support (coping/resource buffering). 
+3.2 Why four items per subscale 
+Cronbach's alpha, the standard measure of internal consistency, becomes statistically unstable below 
+3 items and cannot be meaningfully interpreted with only 1–2 items. Four items per subscale was 
+selected as a safety margin above this minimum, balancing measurement reliability against 
+respondent burden — the full 16-item MSI is designed to be completed in under 3 minutes. 
+3.3 Why items echo gold-standard phrasing 
+Several items (e.g., S1, S2, S3, R1, PH1, M4) were deliberately worded to closely parallel language used 
+in established, validated instruments (PSS-10, DASS-21, WHO-5, BRS — see Section 5). This is a 
+recognised technique in scale development to strengthen convergent validity, since closely related 
+wording increases the likelihood that both instruments are capturing the same underlying construct. 
+Items not mirrored on a gold standard (e.g., S4, R2, R4) were retained to preserve MSI's distinct 
+measurement contribution beyond simple replication of existing tools. 
+  
+
+=== PAGE 4 ===
+4. Scoring Logic and Formula 
+4.1 Item coding 
+All items except M1 (Never=1, Rarely=2, Sometimes=3, Often=4, Always=5): 
+M1 is reverse-coded, since it is the only positively-framed item: 뇤뉤뉥눷=5, 뇤눨눩눪눫눬=4, 덞덛덟덜덝=3, 뇤뇪뇫뇥뇦=2, 뽹뽸뽺뽻뽼=1. 
+This ensures all 16 items point in the same direction (higher = more distress) before scoring. 
+4.2 Subscale raw scores 
+Subscale Formula Raw Range 
+Mood M1(recoded) + M2 + M3 + M4 4–20 
+Stress Load S1 + S2 + S3 + S4 4–20 
+Recovery & Support R1 + R2 + R3 + R4 4–20 
+Physical PH1 + PH2 + PH3 + PH4 4–20 
+  
+4.3 MSI Total raw score 
+MSI Total (raw) = Mood + Stress Load + Recovery & Support + Physical    
+[Range: 16–80] 
+4.4 Composite score (0–100 scale) 
+The raw total is converted to a 0–100 composite score using a linear transformation: 
+MSI Composite = ((Total Raw − 16) / 64) × 100 
+The same linear transformation is applied at the subscale level: 
+Subscale Composite = ((Subscale Raw − 4) / 16) × 100 
+4.5 Why a linear formula was chosen over a compressed/curved transformation 
+An earlier design consideration explored a logistic (sigmoid) transformation, which would 
+mathematically guarantee the composite score never reaches exactly 0 or 100 — modelling the 
+biological reality that physiological stress arousal is never truly absent nor infinite. While this is a 
+defensible product-communication idea, it was deliberately excluded from MSI's validation scoring for 
+one critical reason: all four gold-standard comparator instruments used in MSI's validation (PSS-10, 
+DASS-21, WHO-5, BRS — see Section 5) use simple linear summation with no curve or compression. 
+Correlating a curved MSI score against linearly-scored comparators would distort the resulting 
+correlation coefficients, particularly at the score extremes, and would introduce a methodological 
+inconsistency that undermines — rather than strengthens — the credibility of the validation. The 
+linear formula is therefore used for all scientific validation and correlation analysis. A compressed 
+display transformation (e.g., capping the range shown to end-users) may be considered separately as 
+a product/UX decision once validation is complete, but this is explicitly a presentation-layer choice, 
+not a scoring or scientific one, and should not be described as part of MSI's validated scoring 
+methodology. 
+  
+
+=== PAGE 5 ===
+5. Scientific Credibility — Validation Design 
+MSI's scientific credibility rests on a concurrent validity design: each subscale is validated against an 
+established, published instrument measuring a closely related construct, administered to the same 
+respondents in the same sitting. 
+MSI Subscale Gold Standard Expected Direction Expected r 
+Mood WHO-5 Well-Being Index Negative −0.35 to −0.55 
+Stress Load PSS-10 (Perceived Stress 
+Scale) 
+Positive 0.45 to 0.65 
+Recovery & Support Brief Resilience Scale (BRS) Negative −0.30 to −0.50 
+Physical DASS-21 Stress Subscale Positive 0.35 to 0.55 
+MSI Total PSS-10 (headline figure) Positive 0.40 to 0.55 
+  
+Interpretive benchmarks (Cohen, 1988): r = 0.10–0.29 weak, 0.30–0.49 moderate, 0.50–0.69 strong, 
+0.70+ very strong. A target range of r = 0.40–0.65 is considered ideal for convergent validity between 
+related-but-distinct instruments — high enough to indicate genuine construct overlap, but not so high 
+as to suggest MSI is merely redundant with existing tools. 
+5.1 Internal consistency targets 
+Cronbach's alpha will be calculated for MSI Total and each of the four subscales. The conventional 
+acceptability threshold is α ≥ 0.70; α = 0.60–0.69 is considered marginal and reportable with caveats; 
+α below 0.60 is considered unacceptable and would indicate the subscale requires revision before 
+further use. 
+5.2 Reference instruments used 
+• PSS-10 — Cohen, Kamarck & Mermelstein (1983). Perceived Stress Scale, 10-item version. 
+Widely validated internationally and within Indian populations. 
+• DASS-21 — Lovibond & Lovibond (1995). Depression Anxiety Stress Scales, stress subscale (7 
+items). 
+• WHO-5 — World Health Organization (1998). Five-item Well-Being Index; public domain for 
+research use; validated in 200+ published studies. 
+• BRS — Smith et al. (2008). Brief Resilience Scale, 6 items. 
+5.3 Sample and statistical plan 
+Target sample: N = 1,000 minimum. All respondents complete MSI alongside all four comparator 
+instruments in a single sitting (concurrent design). Analysis: Pearson correlation coefficients (subscale-
+to-comparator and total-to-PSS-10), Cronbach's alpha per subscale and total, and exploratory factor 
+analysis to examine whether the 16 items empirically cluster into the four intended subscales. 
+5.4 Implications of N = 1,000 
+A sample of this size is well beyond the minimum needed for stable correlation and reliability 
+estimates (N = 100–200 is typically sufficient for those alone) and unlocks analyses that are not reliable 
+at smaller samples: 
+
+=== PAGE 6 ===
+• Confirmatory Factor Analysis (CFA), not just exploratory (EFA) — at N ≥ 1,000, the four-
+subscale structure can be formally tested for fit (e.g., via CFI, RMSEA, TLI fit indices) rather 
+than only explored, which is a materially stronger form of structural validity evidence. 
+• A train/test split — the sample can be randomly divided (e.g., 60/40), running EFA on one half 
+and confirmatory CFA on the other, which avoids the methodological criticism of fitting and 
+confirming a structure on the same data. 
+• Sub-group analysis with adequate power — correlations and reliability can be checked 
+separately by gender, student vs. working professional, and other demographic splits without 
+each subgroup becoming underpowered. 
+• Tighter confidence intervals on every reported statistic — an r = 0.50 at N = 1,000 has a much 
+narrower, more defensible confidence interval than the same r at N = 200. 
+One caution worth flagging directly: at N = 1,000, statistical significance (p < .05) becomes very easy 
+to achieve even for correlations that are practically trivial — a correlation as weak as r ≈ 0.06 can be 
+"statistically significant" at this sample size despite explaining under 1% of shared variance. The 
+Cohen's-d style benchmarks in Section 5 (weak/moderate/strong) — not the p-value alone — should 
+be the basis for any claim of validity. A subscale correlating with its comparator at r = 0.15 and p < 
+.001 should still be reported and treated as a weak, not a meaningful, relationship. 
+A second point worth deciding deliberately: reaching N = 1,000 will very likely require recruitment 
+beyond a single university's WhatsApp/campus channels alone. If the final sample remains 
+substantially concentrated within Parul University, the "single convenience sample" limitation noted 
+in Section 8 still applies regardless of the raw N — a large but narrow sample does not, by itself, 
+generalise more broadly than a small one. If broader recruitment (multiple institutions, working 
+professionals outside the university, etc.) is part of the plan to reach 1,000, that should be 
+documented as part of the sampling strategy, since it materially strengthens the generalisability claim 
+you can make. 
+6. Final Scoring Matrix 
+Band Composite Score Range Status 
+Healthy 0–20 Provisional* 
+Mild 21–40 Provisional* 
+Moderate 41–60 Provisional* 
+High 61–80 Provisional* 
+Burnout 81–100 Provisional* 
+  
+*These five bands are currently evenly-spaced placeholders and have not yet been empirically 
+derived from validation data. The scientifically defensible approach — to be completed once 
+validation data is collected — is to set band boundaries using either (a) percentile-based cutoffs 
+from the actual response distribution, or (b) anchoring against PSS-10's own published severity 
+cutoffs via the regression relationship established during validation. Presenting these bands as final 
+or clinically meaningful prior to this step would not be methodologically defensible and should be 
+avoided in any external-facing material. 
+7. Worked Example 
+
+=== PAGE 7 ===
+Respondent subscale raw scores: Mood = 14, Stress Load = 16, Recovery & Support = 10, Physical = 
+12. 
+Total Raw = 14 + 16 + 10 + 12 = 52 
+Composite = ((52 − 16) / 64) × 100 = 56.25 
+Result: Composite score of 56.25 falls within the "Moderate" band (41–60) under the current 
+provisional matrix. 
+8. Known Limitations (to be addressed post-validation) 
+• Band cutoffs (Section 6) are provisional and not yet empirically derived — this must be 
+corrected before any external stress-level claims are made. 
+• Recovery & Support, even at 4 items, may show a weaker correlation with its comparator 
+(BRS) than other subscales, given resilience/social-support constructs are less directly 
+captured by the existing gold standards used elsewhere in this study. 
+• Validation sample is a convenience sample from a single university; findings should be 
+described as preliminary and population-specific until replicated in a broader or more 
+representative sample. 
+• MSI measures self-reported, perceived stress only. It does not measure or infer any 
+biological/physiological stress marker (e.g., cortisol), and should never be described or 
+marketed as a biomarker-based or clinical diagnostic instrument. 
+

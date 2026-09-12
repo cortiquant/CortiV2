@@ -198,6 +198,16 @@ router.patch("/profile", requireActiveEmployee, async (req, res) => {
     }
 
     const DEPT_ID_MAP = {
+      // New Department Structure
+      "Tech & Product": "DEP-001",
+      "Research & Innovation": "DEP-002",
+      "Sales & Marketing": "DEP-003",
+      "Services / Delivery": "DEP-004",
+      "Operations & Admin": "DEP-005",
+      "Finance and Legal": "DEP-006",
+      "People & Support": "DEP-007",
+      "Other": "DEP-008",
+      // Legacy compatibility fallbacks
       "Engineering": "DEP-001",
       "Operations": "DEP-002",
       "Sales": "DEP-003",
@@ -205,12 +215,14 @@ router.patch("/profile", requireActiveEmployee, async (req, res) => {
       "HR": "DEP-005",
       "Finance": "DEP-006",
       "Customer Support": "DEP-007",
-      "Other": "DEP-008",
     }
 
+    const { normalizeDepartmentName } = require("../services/departmentService")
+
     if (department && typeof department === "string") {
-      userUpdates.department = department.trim()
-      userUpdates.departmentId = DEPT_ID_MAP[department.trim()] || "DEP-009"
+      const normalizedDept = normalizeDepartmentName(department.trim())
+      userUpdates.department = normalizedDept
+      userUpdates.departmentId = DEPT_ID_MAP[normalizedDept] || DEPT_ID_MAP[department.trim()] || "DEP-009"
     }
 
     const updatedUser = await User.findByIdAndUpdate(user._id, userUpdates, { new: true })

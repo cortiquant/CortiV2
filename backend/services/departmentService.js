@@ -3,16 +3,44 @@ const Organisation = require("../models/Organisation")
 const mongoose = require("mongoose")
 
 /**
+ * Department Name Mapping: Old -> New
+ */
+const DEPARTMENT_MAPPING = {
+  "Engineering": "Tech & Product",
+  "Sales": "Sales & Marketing",
+  "HR": "Operations & Admin",
+  "Operations": "Research & Innovation",
+  "Finance": "Finance and Legal",
+  "Marketing": "Services / Delivery",
+  "Customer Support": "People & Support",
+  "Other": "Other",
+}
+
+/**
+ * Normalizes legacy department names to new names.
+ */
+function normalizeDepartmentName(name) {
+  if (!name || typeof name !== "string") return name
+  const trimmed = name.trim()
+  for (const [oldName, newName] of Object.entries(DEPARTMENT_MAPPING)) {
+    if (trimmed.toLowerCase() === oldName.toLowerCase()) {
+      return newName
+    }
+  }
+  return trimmed
+}
+
+/**
  * Standard department catalogue names
  */
 const DEFAULT_DEPARTMENTS = [
-  "Engineering",
-  "Customer Support",
-  "Sales",
-  "Marketing",
-  "Operations",
-  "HR",
-  "Finance",
+  "Tech & Product",
+  "Sales & Marketing",
+  "Operations & Admin",
+  "Research & Innovation",
+  "Finance and Legal",
+  "Services / Delivery",
+  "People & Support",
   "Other",
 ]
 
@@ -126,7 +154,8 @@ async function getOrCreateDepartment(organisationId, departmentName) {
   })
 
   const queryOrgId = org ? org.organisationId : organisationId
-  const trimmedName = departmentName.trim()
+  const rawTrimmed = departmentName.trim()
+  const trimmedName = normalizeDepartmentName(rawTrimmed)
 
   // 1. Try to find existing department by name (case-insensitive)
   let dept = await Department.findOne({
@@ -188,5 +217,7 @@ async function getOrCreateDepartment(organisationId, departmentName) {
 module.exports = {
   ensureDepartmentsForOrg,
   getOrCreateDepartment,
+  normalizeDepartmentName,
+  DEPARTMENT_MAPPING,
   DEFAULT_DEPARTMENTS,
 }
