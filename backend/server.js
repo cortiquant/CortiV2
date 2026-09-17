@@ -20,6 +20,7 @@ const interventionsRoutes = require("./routes/interventions")
 const reportsRoutes       = require("./routes/reports")
 const hrOverviewRoutes  = require("./routes/hrOverview")
 const listenerRoutes    = require("./routes/listeners")
+const { publicRouter: professionalsRoutes, adminRouter: adminProfessionalsRoutes } = require("./routes/professionals")
 const { verifySMTP }    = require("./services/emailService")
 
 // Safe diagnostic logging (no passwords or credentials exposed)
@@ -131,6 +132,8 @@ app.use("/api/listener",      listenerRoutes)
 app.use("/api/listeners",     listenerRoutes)
 app.use("/api/listener-sessions", listenerRoutes)
 app.use("/api/sessions",      listenerRoutes)
+app.use("/api/professionals", professionalsRoutes)
+app.use("/api/admin/professionals", adminProfessionalsRoutes)
 
 // ── Health checks ─────────────────────────────────────────────────────────────
 app.get("/api/health", (req, res) => {

@@ -710,6 +710,257 @@ ${ctaUrl}
   }
 }
 
+/**
+ * Escapes HTML characters in user-provided content to prevent XSS / formatting corruption.
+ */
+function escapeHtml(str) {
+  if (!str) return ""
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;")
+}
+
+/**
+ * Generates branded HTML template for Employee Account Approved email.
+ */
+function employeeApprovedEmailTemplate({ employeeName, loginUrl }) {
+  const ctaUrl = loginUrl || buildFrontendUrl("/company-login")
+  const safeName = escapeHtml(employeeName || "Employee")
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Your CortiQuant Account Has Been Approved</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f9fafb; color: #111827;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <table width="100%" max-width="600" cellpadding="0" cellspacing="0" style="max-width: 600px; background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+          <!-- Header -->
+          <tr>
+            <td style="background-color: #701198; padding: 32px 40px; text-align: left;">
+              <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">CortiQuant</h1>
+              <p style="color: rgba(255, 255, 255, 0.85); margin: 6px 0 0 0; font-size: 13px;">Workplace Wellness & Performance Intelligence</p>
+            </td>
+          </tr>
+          <!-- Body -->
+          <tr>
+            <td style="padding: 40px;">
+              <p style="font-size: 16px; margin: 0 0 16px 0; color: #111827;">Hello <strong>${safeName}</strong>,</p>
+              <p style="font-size: 14px; line-height: 24px; margin: 0 0 20px 0; color: #4b5563;">
+                Your CortiQuant account has been approved by your organisation's HR administrator.
+              </p>
+              <p style="font-size: 14px; line-height: 24px; margin: 0 0 24px 0; color: #4b5563;">
+                You can now sign in and begin your CortiQuant journey. Use your registered username and password to access your wellness dashboard, check-ins, and workplace tools.
+              </p>
+
+              <!-- CTA Button -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin: 32px 0;">
+                <tr>
+                  <td align="center">
+                    <a href="${ctaUrl}" target="_blank" style="display: inline-block; background-color: #701198; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 10px; font-size: 14px; font-weight: 600; box-shadow: 0 2px 4px rgba(112, 17, 152, 0.2);">
+                      Sign In to CortiQuant
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="font-size: 12px; color: #9ca3af; text-align: center; margin: 0 0 24px 0;">
+                If the button above does not work, copy and paste this link into your browser:<br>
+                <a href="${ctaUrl}" style="color: #701198; word-break: break-all;">${ctaUrl}</a>
+              </p>
+
+              <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 28px 0;">
+
+              <p style="font-size: 14px; color: #4b5563; margin: 0 0 4px 0;">
+                Thank you,<br>
+                <strong>Team CortiQuant</strong>
+              </p>
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td style="background-color: #f9fafb; padding: 20px 40px; text-align: center; border-top: 1px solid #e5e7eb;">
+              <p style="font-size: 12px; color: #9ca3af; margin: 0;">&copy; ${new Date().getFullYear()} CortiQuant. All rights reserved.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `
+}
+
+/**
+ * Sends an employee approved email notification.
+ */
+async function sendEmployeeApprovedEmail({ to, employeeName, loginUrl }) {
+  const transporter = getTransporter()
+  const fromAddress = process.env.EMAIL_FROM || process.env.SMTP_FROM || "CortiQuant <cortiquant@gmail.com>"
+  const subject = "Your CortiQuant Account Has Been Approved"
+  const ctaUrl = loginUrl || buildFrontendUrl("/company-login")
+  const displayName = employeeName || "Employee"
+
+  const text = `Hello ${displayName},
+
+Your CortiQuant account has been approved by your organisation's HR administrator.
+
+You can now sign in and begin your CortiQuant journey.
+
+Sign in here using your registered username and password:
+${ctaUrl}
+
+Thank you,
+Team CortiQuant`
+
+  const html = employeeApprovedEmailTemplate({ employeeName: displayName, loginUrl: ctaUrl })
+
+  if (!transporter) {
+    console.warn(`[EMAIL MOCK] SMTP not configured. Would send approval email to: ${to}`)
+    return { success: true, mocked: true }
+  }
+
+  try {
+    const info = await transporter.sendMail({
+      from: fromAddress,
+      to,
+      subject,
+      text,
+      html,
+    })
+    console.log(`[EMAIL] Employee approved email successfully sent to ${to} (msgId: ${info.messageId})`)
+    return { success: true, messageId: info.messageId }
+  } catch (err) {
+    console.error(`[EMAIL] Failed sending employee approved email to ${to}:`, err.message)
+    return { success: false, error: err.message }
+  }
+}
+
+/**
+ * Generates branded HTML template for Employee Account Rejected email.
+ */
+function employeeRejectedEmailTemplate({ employeeName, rejectionReason }) {
+  const safeName = escapeHtml(employeeName || "Employee")
+  const safeReason = rejectionReason ? escapeHtml(rejectionReason.trim()) : null
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Update Regarding Your CortiQuant Registration</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f9fafb; color: #111827;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <table width="100%" max-width="600" cellpadding="0" cellspacing="0" style="max-width: 600px; background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+          <!-- Header -->
+          <tr>
+            <td style="background-color: #701198; padding: 32px 40px; text-align: left;">
+              <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">CortiQuant</h1>
+              <p style="color: rgba(255, 255, 255, 0.85); margin: 6px 0 0 0; font-size: 13px;">Workplace Wellness & Performance Intelligence</p>
+            </td>
+          </tr>
+          <!-- Body -->
+          <tr>
+            <td style="padding: 40px;">
+              <p style="font-size: 16px; margin: 0 0 16px 0; color: #111827;">Hello <strong>${safeName}</strong>,</p>
+              <p style="font-size: 14px; line-height: 24px; margin: 0 0 16px 0; color: #4b5563;">
+                Thank you for registering with CortiQuant.
+              </p>
+              <p style="font-size: 14px; line-height: 24px; margin: 0 0 20px 0; color: #4b5563;">
+                After reviewing your registration, your organisation's HR administrator has not approved your account at this time.
+              </p>
+              ${
+                safeReason
+                  ? `
+              <div style="background-color: #fef2f2; border: 1px solid #fee2e2; border-radius: 10px; padding: 16px; margin: 20px 0;">
+                <p style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: #991b1b; margin: 0 0 6px 0;">Note from HR:</p>
+                <p style="font-size: 14px; color: #7f1d1d; margin: 0; line-height: 20px;">${safeReason}</p>
+              </div>
+              `
+                  : ""
+              }
+              <p style="font-size: 14px; line-height: 24px; margin: 20px 0 24px 0; color: #4b5563;">
+                For further clarification, please contact your organisation's HR administrator.
+              </p>
+
+              <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 28px 0;">
+
+              <p style="font-size: 14px; color: #4b5563; margin: 0 0 4px 0;">
+                Thank you,<br>
+                <strong>Team CortiQuant</strong>
+              </p>
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td style="background-color: #f9fafb; padding: 20px 40px; text-align: center; border-top: 1px solid #e5e7eb;">
+              <p style="font-size: 12px; color: #9ca3af; margin: 0;">&copy; ${new Date().getFullYear()} CortiQuant. All rights reserved.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `
+}
+
+/**
+ * Sends an employee rejected email notification.
+ */
+async function sendEmployeeRejectedEmail({ to, employeeName, rejectionReason }) {
+  const transporter = getTransporter()
+  const fromAddress = process.env.EMAIL_FROM || process.env.SMTP_FROM || "CortiQuant <cortiquant@gmail.com>"
+  const subject = "Update Regarding Your CortiQuant Registration"
+  const displayName = employeeName || "Employee"
+  const reasonText = rejectionReason && rejectionReason.trim() ? `\n\nReason provided by HR:\n${rejectionReason.trim()}` : ""
+
+  const text = `Hello ${displayName},
+
+Thank you for registering with CortiQuant.
+
+After reviewing your registration, your organisation's HR administrator has not approved your account at this time.${reasonText}
+
+For further clarification, please contact your organisation's HR administrator.
+
+Thank you,
+Team CortiQuant`
+
+  const html = employeeRejectedEmailTemplate({ employeeName: displayName, rejectionReason })
+
+  if (!transporter) {
+    console.warn(`[EMAIL MOCK] SMTP not configured. Would send rejection email to: ${to}`)
+    return { success: true, mocked: true }
+  }
+
+  try {
+    const info = await transporter.sendMail({
+      from: fromAddress,
+      to,
+      subject,
+      text,
+      html,
+    })
+    console.log(`[EMAIL] Employee rejected email successfully sent to ${to} (msgId: ${info.messageId})`)
+    return { success: true, messageId: info.messageId }
+  } catch (err) {
+    console.error(`[EMAIL] Failed sending employee rejected email to ${to}:`, err.message)
+    return { success: false, error: err.message }
+  }
+}
+
 module.exports = {
   sendHRInvitation,
   sendListenerInvitation,
@@ -718,6 +969,10 @@ module.exports = {
   sendBookingConfirmationEmail,
   employeeApprovalRequestTemplate,
   sendEmployeeApprovalRequestEmail,
+  employeeApprovedEmailTemplate,
+  sendEmployeeApprovedEmail,
+  employeeRejectedEmailTemplate,
+  sendEmployeeRejectedEmail,
   verifySMTP,
 }
 

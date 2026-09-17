@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
 import UpcomingSessionCard, { UpcomingSessionData } from "@/components/UpcomingSessionCard"
 import { getMSIBand, getMSICategory, MSI_BANDS, MSIBandLabel } from "@/utils/msiClassification"
@@ -2013,48 +2013,91 @@ function SupportScreen({ onNav }: { onNav: (s: Screen) => void }) {
 
 // ── Professional Support directory ────────────────────────────────────────────
 
-const PROFESSIONALS = [
-  {
-    initials: "AK",
-    name: "Dr. Ananya Krishnan",
-    type: "psychologist" as const,
-    typeLabel: "Psychologist",
-    specialization: "Stress & Workplace Wellbeing",
-    desc: "Helps with workplace stress, emotional overwhelm, and building healthier coping routines.",
-    availability: "Available today",
-    availableNow: true,
-    duration: "45 min",
-    sessionType: "Online",
-  },
-  {
-    initials: "RM",
-    name: "Rajan Mehta",
-    type: "counsellor" as const,
-    typeLabel: "Counsellor",
-    specialization: "Workplace & Emotional Wellbeing",
-    desc: "Support for work pressure, burnout-related concerns, and difficult personal situations.",
-    availability: "Available tomorrow",
-    availableNow: false,
-    duration: "30 min",
-    sessionType: "Online",
-  },
-  {
-    initials: "PN",
-    name: "Dr. Priya Nair",
-    type: "mental-health" as const,
-    typeLabel: "Mental Health Professional",
-    specialization: "Anxiety & Burnout Recovery",
-    desc: "Specialises in anxiety management and recovery from chronic workplace stress and burnout.",
-    availability: "Available today",
-    availableNow: true,
-    duration: "60 min",
-    sessionType: "Online",
-  },
-]
+interface PublicProfessional {
+  id: string
+  _id: string
+  professionalName: string
+  occupation: string
+  shortStats: string
+  qualification: string
+  consultationType: "Complimentary" | "Paid"
+  status: "Active" | "Inactive"
+}
 
 function ProfessionalSupportScreen({ onBack }: { onBack: () => void }) {
-  const [filter, setFilter] = useState<"all" | "psychologist" | "counsellor" | "mental-health">("all")
-  const visible = filter === "all" ? PROFESSIONALS : PROFESSIONALS.filter((p) => p.type === filter)
+  const [professionals, setProfessionals] = useState<PublicProfessional[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [filter, setFilter] = useState<string>("all")
+  const [connectingId, setConnectingId] = useState<string | null>(null)
+
+  useEffect(() => {
+    let isMounted = true
+    async function loadProfessionals() {
+      setLoading(true)
+      setError(null)
+      try {
+        const res = await fetch("/api/professionals")
+        const data = await res.json()
+        if (isMounted) {
+          if (res.ok && data?.success && Array.isArray(data.data)) {
+            setProfessionals(data.data)
+          } else {
+            setProfessionals([])
+          }
+        }
+      } catch {
+        if (isMounted) {
+          setError("Unable to load professionals at this time. Please check back shortly.")
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false)
+        }
+      }
+    }
+
+    loadProfessionals()
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  // Dynamic filter options based on available occupations
+  const occupationCategories = useMemo(() => {
+    const unique = Array.from(new Set(professionals.map((p) => p.occupation).filter(Boolean)))
+    return [{ id: "all", label: "All" }, ...unique.map((occ) => ({ id: occ, label: occ }))]
+  }, [professionals])
+
+  const visible = filter === "all"
+    ? professionals
+    : professionals.filter((p) => p.occupation === filter)
+
+  const handleConnect = async (p: PublicProfessional) => {
+    const profId = p._id || p.id
+    setConnectingId(profId)
+    try {
+      const res = await fetch(`/api/professionals/${profId}/connect`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      })
+      const data = await res.json()
+
+      if (res.ok && data?.success && data?.connectUrl) {
+        // Open WhatsApp in a new tab; fallback to location href if popup blocked
+        const win = window.open(data.connectUrl, "_blank", "noopener,noreferrer")
+        if (!win || win.closed || typeof win.closed === "undefined") {
+          window.location.href = data.connectUrl
+        }
+      } else {
+        alert(data?.message || "Unable to initiate connection with this professional. Please try again.")
+      }
+    } catch {
+      alert("Network error connecting with professional.")
+    } finally {
+      setConnectingId(null)
+    }
+  }
 
   return (
     <Shell>
@@ -2069,70 +2112,151 @@ function ProfessionalSupportScreen({ onBack }: { onBack: () => void }) {
         <p className="text-sm text-text-muted leading-relaxed">Qualified professionals when you feel you need more support.</p>
       </div>
 
-      {/* Filters */}
-      <div className="flex gap-2 mb-5 overflow-x-auto pb-0.5">
-        {[
-          { id: "all", label: "All" },
-          { id: "psychologist", label: "Psychologist" },
-          { id: "counsellor", label: "Counsellor" },
-          { id: "mental-health", label: "Mental health" },
-        ].map((f) => (
-          <button
-            key={f.id}
-            onClick={() => setFilter(f.id as typeof filter)}
-            className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-150 ${
-              filter === f.id
-                ? "bg-purple-core text-warm-white"
-                : "bg-elevated border border-border-p text-text-muted hover:border-border-s"
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
+      {/* Filters (only show if multiple categories exist) */}
+      {!loading && occupationCategories.length > 1 && (
+        <div className="flex gap-2 mb-5 overflow-x-auto pb-0.5 scrollbar-none">
+          {occupationCategories.map((f) => (
+            <button
+              key={f.id}
+              onClick={() => setFilter(f.id)}
+              className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-150 cursor-pointer ${
+                filter === f.id
+                  ? "bg-purple-core text-warm-white shadow-sm"
+                  : "bg-elevated border border-border-p text-text-muted hover:border-border-s hover:text-warm-white"
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      )}
 
-      {/* Professional cards */}
-      <div className="space-y-3 mb-5">
-        {visible.map((p, i) => (
-          <div
-            key={p.name}
-            className="rounded-3xl p-4 animate-fade-up"
-            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", animationDelay: `${i * 50}ms` }}
-          >
-            <div className="flex items-start gap-3 mb-3">
-              <div className="w-10 h-10 rounded-full bg-purple-core/15 border border-purple-core/20 flex items-center justify-center flex-shrink-0">
-                <span className="text-xs font-bold text-lavender-soft">{p.initials}</span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between gap-2 mb-0.5">
-                  <p className="text-sm font-semibold text-warm-white leading-snug">{p.name}</p>
-                  <span className="text-[9px] font-medium text-text-muted border border-border-p rounded-full px-2 py-0.5 flex-shrink-0 leading-none mt-0.5">Sample</span>
+      {/* Content Area */}
+      {loading ? (
+        <div className="space-y-3 mb-5">
+          {[1, 2, 3].map((n) => (
+            <div
+              key={n}
+              className="rounded-3xl p-4 animate-pulse"
+              style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
+            >
+              <div className="flex items-start gap-3 mb-3">
+                <div className="w-10 h-10 rounded-full bg-white/5 flex-shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 bg-white/5 rounded w-1/3" />
+                  <div className="h-3 bg-white/5 rounded w-1/4" />
                 </div>
-                <p className="text-xs text-text-muted mb-1.5">{p.typeLabel}</p>
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-purple-core/10 text-lavender-soft border border-purple-core/15 leading-none">
-                  {p.specialization}
-                </span>
               </div>
+              <div className="h-3 bg-white/5 rounded w-full mb-2" />
+              <div className="h-3 bg-white/5 rounded w-2/3 mb-4" />
+              <div className="h-9 bg-white/5 rounded-2xl w-full" />
             </div>
-
-            <p className="text-xs text-text-muted leading-relaxed mb-3">{p.desc}</p>
-
-            <div className="flex items-center gap-3 mb-3">
-              <div className="flex items-center gap-1 text-xs">
-                <svg className="w-3 h-3 text-text-muted" fill="none" viewBox="0 0 12 12">
-                  <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.2" />
-                  <path d="M6 3.5v2.5l1.5 1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-                </svg>
-                <span className={p.availableNow ? "text-c-success font-medium" : "text-text-muted"}>{p.availability}</span>
-              </div>
-              <div className="w-px h-3 bg-border-p" />
-              <span className="text-xs text-text-muted">{p.duration} · {p.sessionType}</span>
-            </div>
-
-            <button className="btn-primary w-full py-2.5 text-xs font-semibold rounded-2xl">Connect</button>
+          ))}
+        </div>
+      ) : error ? (
+        <div className="rounded-3xl p-6 text-center mb-5" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
+          <p className="text-xs text-c-critical mb-3">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="btn-ghost text-xs px-4 py-2 rounded-xl"
+          >
+            Retry
+          </button>
+        </div>
+      ) : visible.length === 0 ? (
+        <div className="rounded-3xl p-8 text-center mb-5" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
+          <div className="w-12 h-12 rounded-full bg-purple-core/10 border border-purple-core/20 flex items-center justify-center mx-auto mb-3 text-lg">
+            🧑‍⚕️
           </div>
-        ))}
-      </div>
+          <p className="text-sm font-medium text-warm-white mb-1">No professionals found</p>
+          <p className="text-xs text-text-muted max-w-xs mx-auto">
+            {filter !== "all" ? "No professionals found in this category." : "There are currently no professionals listed. Please check back soon or access our emergency support services."}
+          </p>
+        </div>
+      ) : (
+        /* Professional cards */
+        <div className="space-y-3 mb-5">
+          {visible.map((p, i) => {
+            const initials = (p.professionalName ? p.professionalName.replace(/^Dr\.\s*/i, "").slice(0, 2) : "PR").toUpperCase()
+            const isConnecting = connectingId === (p._id || p.id)
+
+            return (
+              <div
+                key={p._id || p.id}
+                className="rounded-3xl p-4 animate-fade-up"
+                style={{
+                  background: "rgba(255,255,255,0.04)",
+                  border: "1px solid rgba(255,255,255,0.07)",
+                  animationDelay: `${i * 50}ms`,
+                }}
+              >
+                <div className="flex items-start gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-full bg-purple-core/15 border border-purple-core/20 flex items-center justify-center flex-shrink-0">
+                    <span className="text-xs font-bold text-lavender-soft">{initials}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2 mb-0.5">
+                      <p className="text-sm font-semibold text-warm-white leading-snug truncate" title={p.professionalName}>
+                        {p.professionalName}
+                      </p>
+                      <span
+                        className={`text-[9px] font-semibold border rounded-full px-2 py-0.5 flex-shrink-0 leading-none mt-0.5 ${
+                          p.consultationType === "Complimentary"
+                            ? "bg-c-success/10 text-c-success border-c-success/20"
+                            : "bg-purple-core/15 text-lavender-soft border-purple-core/25"
+                        }`}
+                      >
+                        {p.consultationType}
+                      </span>
+                    </div>
+                    <p className="text-xs text-text-muted mb-1.5">{p.occupation}</p>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-purple-core/10 text-lavender-soft border border-purple-core/15 leading-none truncate max-w-full">
+                      {p.qualification}
+                    </span>
+                  </div>
+                </div>
+
+                <p className="text-xs text-text-muted leading-relaxed mb-3">{p.shortStats}</p>
+
+                <div className="flex items-center gap-3 mb-3 text-xs text-text-muted">
+                  <div className="flex items-center gap-1">
+                    <svg className="w-3 h-3 text-c-success" fill="none" viewBox="0 0 12 12">
+                      <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.2" />
+                      <path d="M6 3.5v2.5l1.5 1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                    </svg>
+                    <span className="text-c-success font-medium">Direct WhatsApp Support</span>
+                  </div>
+                  <div className="w-px h-3 bg-border-p" />
+                  <span>Online Consultation</span>
+                </div>
+
+                <button
+                  onClick={() => handleConnect(p)}
+                  disabled={isConnecting}
+                  className="btn-primary w-full py-2.5 text-xs font-semibold rounded-2xl flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isConnecting ? (
+                    <>
+                      <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                      </svg>
+                      Connecting...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                      </svg>
+                      Connect
+                    </>
+                  )}
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       <p className="text-[10px] text-text-muted leading-relaxed text-center px-3 pb-2">
         Cortiquant is not an emergency service. If you are in immediate danger, contact emergency services directly.

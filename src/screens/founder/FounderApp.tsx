@@ -62,6 +62,13 @@ function IconSettings({ active }: { active?: boolean }) {
 function IconListeners({ active }: { active?: boolean }) {
   return <svg className={`w-5 h-5 ${active ? "text-purple-core" : "text-gray-500"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 100-6 3 3 0 000 6z" /></svg>
 }
+function IconProfessionals({ active }: { active?: boolean }) {
+  return (
+    <svg className={`w-5 h-5 ${active ? "text-purple-core" : "text-gray-500"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7zM20 10h.01M20 14h.01" />
+    </svg>
+  )
+}
 
 // ── Generic Table Page ────────────────────────────────────────────────────────
 
@@ -2438,6 +2445,691 @@ function ListenersScreen() {
   )
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Professionals Management Section (Admin / Founder)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface ProfessionalItem {
+  id: string
+  _id: string
+  professionalName: string
+  occupation: string
+  shortStats: string
+  qualification: string
+  consultationType: "Complimentary" | "Paid"
+  phoneNumber?: string
+  email: string
+  status: "Active" | "Inactive"
+  createdAt?: string
+  updatedAt?: string
+}
+
+function AddEditProfessionalModal({
+  isOpen,
+  onClose,
+  professional,
+  onSaved,
+}: {
+  isOpen: boolean
+  onClose: () => void
+  professional: ProfessionalItem | null
+  onSaved: () => void
+}) {
+  const [name, setName] = useState("")
+  const [occupation, setOccupation] = useState("")
+  const [shortStats, setShortStats] = useState("")
+  const [qualification, setQualification] = useState("")
+  const [consultationType, setConsultationType] = useState<"Complimentary" | "Paid">("Complimentary")
+  const [phoneNumber, setPhoneNumber] = useState("")
+  const [email, setEmail] = useState("")
+  const [status, setStatus] = useState<"Active" | "Inactive">("Active")
+
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (professional) {
+      setName(professional.professionalName || "")
+      setOccupation(professional.occupation || "")
+      setShortStats(professional.shortStats || "")
+      setQualification(professional.qualification || "")
+      setConsultationType(professional.consultationType || "Complimentary")
+      setPhoneNumber(professional.phoneNumber || "")
+      setEmail(professional.email || "")
+      setStatus(professional.status || "Active")
+    } else {
+      setName("")
+      setOccupation("")
+      setShortStats("")
+      setQualification("")
+      setConsultationType("Complimentary")
+      setPhoneNumber("")
+      setEmail("")
+      setStatus("Active")
+    }
+    setError(null)
+  }, [professional, isOpen])
+
+  if (!isOpen) return null
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+
+    if (!name.trim()) return setError("Professional name is required.")
+    if (!occupation.trim()) return setError("Occupation is required.")
+    if (!shortStats.trim()) return setError("Short description/stats is required.")
+    if (!qualification.trim()) return setError("Qualification is required.")
+    if (!phoneNumber.trim()) return setError("Phone number is required.")
+    if (!email.trim() || !/^\S+@\S+\.\S+$/.test(email.trim())) {
+      return setError("Please provide a valid email address.")
+    }
+
+    setLoading(true)
+    const payload = {
+      professionalName: name.trim(),
+      occupation: occupation.trim(),
+      shortStats: shortStats.trim(),
+      qualification: qualification.trim(),
+      consultationType,
+      phoneNumber: phoneNumber.trim(),
+      email: email.trim().toLowerCase(),
+      status,
+    }
+
+    try {
+      const endpoint = professional
+        ? `/api/admin/professionals/${professional._id || professional.id}`
+        : "/api/admin/professionals"
+      const method = professional ? "PUT" : "POST"
+
+      const res = await apiRequest(endpoint, {
+        method,
+        body: JSON.stringify(payload),
+      })
+
+      if (res.ok && res.data?.success) {
+        onSaved()
+        onClose()
+      } else {
+        setError(res.data?.message || "Failed to save professional details.")
+      }
+    } catch {
+      setError("Network error saving professional details.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm animate-fade-in">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden border border-gray-100 flex flex-col max-h-[90vh]">
+        <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">
+              {professional ? "Edit Professional" : "Add Professional"}
+            </h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {professional ? "Update professional consultation details." : "Register a qualified wellbeing professional for CortiQuant."}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100 cursor-pointer"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto flex-1">
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 text-xs px-4 py-3 rounded-lg flex items-start gap-2">
+              <svg className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>{error}</span>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1.5">
+              Professional Name *
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Dr. Ananya Krishnan"
+              className="w-full px-3.5 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-core/20 focus:border-purple-core"
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1.5">
+                Occupation *
+              </label>
+              <input
+                type="text"
+                value={occupation}
+                onChange={(e) => setOccupation(e.target.value)}
+                placeholder="e.g. Clinical Psychologist"
+                className="w-full px-3.5 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-core/20 focus:border-purple-core"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1.5">
+                Qualification *
+              </label>
+              <input
+                type="text"
+                value={qualification}
+                onChange={(e) => setQualification(e.target.value)}
+                placeholder="e.g. Ph.D. NIMHANS, RCI Licensed"
+                className="w-full px-3.5 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-core/20 focus:border-purple-core"
+                required
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1.5">
+              Short Description / Stats *
+            </label>
+            <textarea
+              value={shortStats}
+              onChange={(e) => setShortStats(e.target.value)}
+              rows={2}
+              placeholder="e.g. 10+ yrs experience in workplace burnout, anxiety, and high-performance coping."
+              className="w-full px-3.5 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-core/20 focus:border-purple-core resize-none"
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1.5">
+                Consultation Type *
+              </label>
+              <select
+                value={consultationType}
+                onChange={(e) => setConsultationType(e.target.value as "Complimentary" | "Paid")}
+                className="w-full px-3.5 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-purple-core/20 focus:border-purple-core"
+              >
+                <option value="Complimentary">Complimentary</option>
+                <option value="Paid">Paid</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1.5">
+                Status *
+              </label>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value as "Active" | "Inactive")}
+                className="w-full px-3.5 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-purple-core/20 focus:border-purple-core"
+              >
+                <option value="Active">Active (Visible to users)</option>
+                <option value="Inactive">Inactive (Hidden)</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1.5">
+                WhatsApp Phone Number *
+              </label>
+              <input
+                type="text"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                placeholder="+91 98765 43210"
+                className="w-full px-3.5 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-core/20 focus:border-purple-core"
+                required
+              />
+              <p className="text-[11px] text-gray-400 mt-1">
+                Protected. Never displayed on the public support page.
+              </p>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1.5">
+                Email Address *
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="professional@example.com"
+                className="w-full px-3.5 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-core/20 focus:border-purple-core"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-gray-100 flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={loading}
+              className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="bg-purple-core hover:bg-purple-700 text-white text-sm font-medium px-5 py-2 rounded-lg transition-colors shadow-sm disabled:opacity-50 cursor-pointer flex items-center gap-2"
+            >
+              {loading && (
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+              )}
+              {professional ? "Update Professional" : "Add Professional"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+function DeleteProfessionalModal({
+  isOpen,
+  professional,
+  onClose,
+  onDeleted,
+}: {
+  isOpen: boolean
+  professional: ProfessionalItem | null
+  onClose: () => void
+  onDeleted: () => void
+}) {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  if (!isOpen || !professional) return null
+
+  const handleDelete = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await apiRequest(`/api/admin/professionals/${professional._id || professional.id}`, {
+        method: "DELETE",
+      })
+      if (res.ok && res.data?.success) {
+        onDeleted()
+        onClose()
+      } else {
+        setError(res.data?.message || "Failed to delete professional.")
+      }
+    } catch {
+      setError("Network error deleting professional.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm animate-fade-in">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden border border-gray-100 p-6">
+        <div className="w-12 h-12 rounded-full bg-red-50 text-red-600 flex items-center justify-center mb-4">
+          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+        </div>
+
+        <h3 className="text-lg font-bold text-gray-900 mb-1">Delete Professional</h3>
+        <p className="text-sm text-gray-500 mb-4">
+          Are you sure you want to remove <strong className="text-gray-900">{professional.professionalName}</strong>? This action cannot be undone.
+        </p>
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 rounded-lg mb-4">
+            {error}
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-3 pt-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={loading}
+            className="bg-red-600 hover:bg-red-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors shadow-sm disabled:opacity-50 cursor-pointer flex items-center gap-2"
+          >
+            {loading ? "Deleting..." : "Delete"}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ProfessionalsScreen() {
+  const [professionals, setProfessionals] = useState<ProfessionalItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState("")
+  const [toastMessage, setToastMessage] = useState<string | null>(null)
+
+  const [modalOpen, setModalOpen] = useState(false)
+  const [selectedProfessional, setSelectedProfessional] = useState<ProfessionalItem | null>(null)
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [professionalToDelete, setProfessionalToDelete] = useState<ProfessionalItem | null>(null)
+  const [togglingId, setTogglingId] = useState<string | null>(null)
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg)
+    setTimeout(() => setToastMessage(null), 3500)
+  }
+
+  const fetchProfessionals = async () => {
+    setLoading(true)
+    try {
+      const res = await apiRequest("/api/admin/professionals")
+      if (res.ok && res.data?.success && Array.isArray(res.data.data)) {
+        setProfessionals(res.data.data)
+      } else {
+        setProfessionals([])
+      }
+    } catch {
+      setProfessionals([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchProfessionals()
+  }, [])
+
+  const handleToggleStatus = async (item: ProfessionalItem) => {
+    const newStatus = item.status === "Active" ? "Inactive" : "Active"
+    setTogglingId(item._id || item.id)
+
+    try {
+      const res = await apiRequest(`/api/admin/professionals/${item._id || item.id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: newStatus }),
+      })
+
+      if (res.ok && res.data?.success) {
+        showToast(`Professional set to ${newStatus}.`)
+        setProfessionals((prev) =>
+          prev.map((p) => (p._id === item._id || p.id === item.id ? { ...p, status: newStatus } : p))
+        )
+      } else {
+        alert(res.data?.message || "Failed to update status.")
+      }
+    } catch {
+      alert("Network error updating status.")
+    } finally {
+      setTogglingId(null)
+    }
+  }
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return professionals
+    return professionals.filter(
+      (p) =>
+        p.professionalName?.toLowerCase().includes(q) ||
+        p.occupation?.toLowerCase().includes(q) ||
+        p.qualification?.toLowerCase().includes(q) ||
+        p.consultationType?.toLowerCase().includes(q)
+    )
+  }, [professionals, search])
+
+  const gridTemplate = "minmax(200px, 1.4fr) minmax(130px, 1fr) minmax(140px, 1.2fr) 110px 100px 120px"
+
+  return (
+    <div className="space-y-6">
+      {/* Toast Alert */}
+      {toastMessage && (
+        <div className="fixed top-5 right-5 z-50 bg-gray-900 text-white text-xs px-4 py-3 rounded-xl shadow-lg border border-gray-700 animate-fade-in flex items-center gap-2">
+          <svg className="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Professionals Directory</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Manage qualified psychologists, counsellors, and therapists accessible in the employee Support page.
+          </p>
+        </div>
+        <button
+          onClick={() => {
+            setSelectedProfessional(null)
+            setModalOpen(true)
+          }}
+          className="bg-purple-core hover:bg-purple-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors shadow-sm cursor-pointer inline-flex items-center gap-2 self-start sm:self-auto"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          Add Professional
+        </button>
+      </div>
+
+      {/* Main Table Card */}
+      <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
+        {/* Search Toolbar */}
+        <div className="p-4 sm:p-5 border-b border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="relative w-full sm:w-80">
+            <svg className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Search by name, occupation..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-core/20 focus:border-purple-core transition-all"
+            />
+          </div>
+          <div className="text-xs text-gray-500 font-medium self-end sm:self-center">
+            {filtered.length} {filtered.length === 1 ? "professional" : "professionals"}
+          </div>
+        </div>
+
+        {/* Scrollable Container */}
+        <div className="overflow-x-auto">
+          <div className="min-w-[850px]">
+            {/* Header Row */}
+            <div
+              className="grid items-center px-6 py-3.5 bg-gray-50/80 border-b border-gray-200 text-xs font-semibold text-gray-600 uppercase tracking-wider gap-4"
+              style={{ gridTemplateColumns: gridTemplate }}
+            >
+              <div>Professional</div>
+              <div>Occupation</div>
+              <div>Qualification</div>
+              <div>Type</div>
+              <div>Status</div>
+              <div className="text-right">Actions</div>
+            </div>
+
+            {/* Content Body */}
+            {loading ? (
+              <div className="p-12 text-center text-gray-500 text-sm flex flex-col items-center justify-center gap-3">
+                <svg className="w-6 h-6 animate-spin text-purple-core" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+                <span>Loading professionals...</span>
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="p-12 text-center flex flex-col items-center justify-center">
+                <div className="w-12 h-12 rounded-full bg-purple-50 border border-purple-100 text-purple-600 flex items-center justify-center mb-3">
+                  <IconProfessionals active />
+                </div>
+                <h3 className="text-base font-semibold text-gray-900 mb-1">No professionals found</h3>
+                <p className="text-xs text-gray-500 max-w-sm mb-4">
+                  {search.trim() ? "No professionals match your search query." : "Add qualified professionals to populate the employee Support directory."}
+                </p>
+                {!search.trim() && (
+                  <button
+                    onClick={() => {
+                      setSelectedProfessional(null)
+                      setModalOpen(true)
+                    }}
+                    className="bg-purple-core hover:bg-purple-700 text-white text-xs font-medium px-4 py-2 rounded-lg transition-colors shadow-sm cursor-pointer inline-flex items-center gap-1.5"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Add Professional
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {filtered.map((p) => {
+                  const isToggling = togglingId === (p._id || p.id)
+                  const initials = (p.professionalName ? p.professionalName.replace(/^Dr\.\s*/i, "").slice(0, 2) : "PR").toUpperCase()
+
+                  return (
+                    <div
+                      key={p._id || p.id}
+                      className="grid items-center px-6 py-4 hover:bg-gray-50/70 transition-colors gap-4 text-sm"
+                      style={{ gridTemplateColumns: gridTemplate }}
+                    >
+                      {/* 1. Name & Avatar */}
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-9 h-9 rounded-full bg-purple-100 border border-purple-200 flex items-center justify-center text-purple-700 font-bold text-xs flex-shrink-0">
+                          {initials}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-gray-900 truncate" title={p.professionalName}>
+                            {p.professionalName}
+                          </p>
+                          <p className="text-xs text-gray-400 truncate" title={p.email}>
+                            {p.email}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* 2. Occupation */}
+                      <div className="text-xs font-medium text-gray-700 truncate" title={p.occupation}>
+                        {p.occupation}
+                      </div>
+
+                      {/* 3. Qualification */}
+                      <div className="text-xs text-gray-600 truncate" title={p.qualification}>
+                        {p.qualification}
+                      </div>
+
+                      {/* 4. Consultation Type */}
+                      <div>
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium border ${
+                            p.consultationType === "Complimentary"
+                              ? "bg-green-50 text-green-700 border-green-200"
+                              : "bg-purple-50 text-purple-700 border-purple-200"
+                          }`}
+                        >
+                          {p.consultationType}
+                        </span>
+                      </div>
+
+                      {/* 5. Status Toggle */}
+                      <div>
+                        <button
+                          onClick={() => handleToggleStatus(p)}
+                          disabled={isToggling}
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border cursor-pointer transition-colors ${
+                            p.status === "Active"
+                              ? "bg-green-100 text-green-700 border-green-200 hover:bg-green-200"
+                              : "bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200"
+                          }`}
+                          title={`Click to switch to ${p.status === "Active" ? "Inactive" : "Active"}`}
+                        >
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              p.status === "Active" ? "bg-green-500" : "bg-gray-400"
+                            }`}
+                          />
+                          {isToggling ? "Updating..." : p.status}
+                        </button>
+                      </div>
+
+                      {/* 6. Actions */}
+                      <div className="flex items-center justify-end gap-2 text-right">
+                        <button
+                          onClick={() => {
+                            setSelectedProfessional(p)
+                            setModalOpen(true)
+                          }}
+                          className="text-purple-700 hover:text-purple-900 px-2 py-1 rounded text-xs font-medium border border-purple-200 hover:bg-purple-50 transition-colors cursor-pointer"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => {
+                            setProfessionalToDelete(p)
+                            setDeleteModalOpen(true)
+                          }}
+                          className="text-red-600 hover:text-red-800 px-2 py-1 rounded text-xs font-medium border border-red-200 hover:bg-red-50 transition-colors cursor-pointer"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <AddEditProfessionalModal
+        isOpen={modalOpen}
+        professional={selectedProfessional}
+        onClose={() => {
+          setModalOpen(false)
+          setSelectedProfessional(null)
+        }}
+        onSaved={() => {
+          showToast(selectedProfessional ? "Professional updated successfully." : "Professional added successfully.")
+          fetchProfessionals()
+        }}
+      />
+
+      <DeleteProfessionalModal
+        isOpen={deleteModalOpen}
+        professional={professionalToDelete}
+        onClose={() => {
+          setDeleteModalOpen(false)
+          setProfessionalToDelete(null)
+        }}
+        onDeleted={() => {
+          showToast("Professional deleted successfully.")
+          fetchProfessionals()
+        }}
+      />
+    </div>
+  )
+}
+
 function HRAdminsScreen() {
   const [hrList, setHrList] = useState<any[]>([])
   const [organisations, setOrganisations] = useState<OrganisationItem[]>([])
@@ -4001,6 +4693,7 @@ export default function FounderApp() {
     { id: "organisations", path: "/founder/organisations", label: "Organisations", icon: <IconOrg active={currentPath === "organisations"} /> },
     { id: "hr-admins", path: "/founder/hr-admins", label: "HR Admins", icon: <IconAdmins active={currentPath === "hr-admins"} /> },
     { id: "listeners", path: "/founder/listeners", label: "Listeners", icon: <IconListeners active={currentPath === "listeners"} /> },
+    { id: "professionals", path: "/founder/professionals", label: "Professionals", icon: <IconProfessionals active={currentPath === "professionals"} /> },
     { id: "employees", path: "/founder/employees", label: "Employees", icon: <IconUsers active={currentPath === "employees"} /> },
     { id: "assessments", path: "/founder/assessments", label: "Assessments", icon: <IconAssessments active={currentPath === "assessments"} /> },
     { id: "activity-logs", path: "/founder/activity-logs", label: "Activity Logs", icon: <IconLogs active={currentPath === "activity-logs"} /> },
@@ -4107,6 +4800,7 @@ export default function FounderApp() {
             <Route path="organisations" element={<OrganisationsScreen />} />
             <Route path="hr-admins" element={<HRAdminsScreen />} />
             <Route path="listeners" element={<ListenersScreen />} />
+            <Route path="professionals" element={<ProfessionalsScreen />} />
             <Route path="employees" element={<EmployeesScreen />} />
             <Route path="assessments" element={<AssessmentsScreen />} />
             <Route path="activity-logs" element={<LogsScreen />} />

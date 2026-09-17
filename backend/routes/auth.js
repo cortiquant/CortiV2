@@ -5,7 +5,7 @@ const jwt = require("jsonwebtoken")
 const User = require("../models/User")
 const Organisation = require("../models/Organisation")
 const { logActivity } = require("../services/activityService")
-const { sendEmployeeApprovalNotification } = require("../services/notificationService")
+const { sendEmployeeApprovalNotification, sendEmployeeApprovalStatusEmail } = require("../services/notificationService")
 const { normalizeDepartmentName } = require("../services/departmentService")
 const { signToken, requireAuth, requireHR } = require("../middleware/auth")
 
@@ -885,6 +885,8 @@ async function handleHRQueue(req, res) {
         approvedAt: e.approvedAt || null,
         rejectedAt: e.rejectedAt || null,
         rejectionReason: e.rejectionReason || null,
+        approvalEmailSentAt: e.approvalEmailSentAt || null,
+        rejectionEmailSentAt: e.rejectionEmailSentAt || null,
         status: displayStatus,
         rawStatus: e.status,
         participantProfile: onb?.participantProfile || null,
@@ -971,6 +973,11 @@ async function handleApproveEmployee(req, res) {
       details: `Approved Employee ${employeeId} (${employee.name})`,
     })
 
+    // ── Automated Status Notification (Asynchronous / Non-blocking) ─────────
+    sendEmployeeApprovalStatusEmail(employee, "Approved").catch((emailErr) => {
+      console.error(`[AUTH] Non-blocking approval email dispatch error for ${employee._id}:`, emailErr.message)
+    })
+
     return res.status(200).json({
       success: true,
       message: `Employee approved successfully. ID: ${employeeId}`,
@@ -1033,6 +1040,11 @@ async function handleRejectEmployee(req, res) {
       entityType: "User",
       entityId: employee._id,
       details: `Rejected Employee ${employee.name} (${employee.username || employee.email})${reason ? ` - Reason: ${reason}` : ""}`,
+    })
+
+    // ── Automated Status Notification (Asynchronous / Non-blocking) ─────────
+    sendEmployeeApprovalStatusEmail(employee, "Rejected", { reason: employee.rejectionReason }).catch((emailErr) => {
+      console.error(`[AUTH] Non-blocking rejection email dispatch error for ${employee._id}:`, emailErr.message)
     })
 
     return res.status(200).json({

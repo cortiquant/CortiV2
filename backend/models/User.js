@@ -138,6 +138,14 @@ const userSchema = new mongoose.Schema(
       default: null,
       trim: true,
     },
+    approvalEmailSentAt: {
+      type: Date,
+      default: null,
+    },
+    rejectionEmailSentAt: {
+      type: Date,
+      default: null,
+    },
 
     // True once the employee has submitted Corporate Onboarding
     onboardingCompleted: {
