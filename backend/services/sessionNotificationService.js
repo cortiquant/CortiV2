@@ -45,37 +45,40 @@ function getKolkataNow() {
   const currentMinutes = parseInt(p.hour, 10) * 60 + parseInt(p.minute, 10)
   const currentTimeStr = `${p.hour}:${p.minute}`
 
-  return { todayStr, currentMinutes, currentTimeStr, raw: now }
+  const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+  const tomorrowParts = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(tomorrow)
+  const tp = {}
+  for (const part of tomorrowParts) {
+    tp[part.type] = part.value
+  }
+  const tomorrowStr = `${tp.year}-${tp.month}-${tp.day}`
+
+  return { todayStr, tomorrowStr, currentMinutes, currentTimeStr, raw: now }
 }
 
 /**
- * Calculates start epoch timestamp in ms for a session given date string and time string in Asia/Kolkata.
+ * Returns the canonical scheduled calendar date string (YYYY-MM-DD) in Asia/Kolkata timezone.
+ * Handles:
+ * 1. ISO date strings or Date objects in session.scheduledDate
+ * 2. Explicit YYYY-MM-DD in session.date
+ * 3. Legacy relative "Today" or "Tomorrow" mapped to the session creation date in IST
  */
-function getSessionStartTimestamp(session) {
+function getSessionDateString(session) {
   if (!session) return null
   const timeZone = "Asia/Kolkata"
-  const kolkataNow = getKolkataNow()
-  const timeStr = session.startTime || session.time
-  const slotMin = parseTimeToMinutes(timeStr)
-  if (slotMin === null) return null
 
-  let datePart = kolkataNow.todayStr
-  const dLower = String(session.date || "").trim().toLowerCase()
+  // 1. If explicit YYYY-MM-DD in session.date, use it directly
+  if (typeof session.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(session.date.trim())) {
+    return session.date.trim()
+  }
 
-  if (dLower === "tomorrow") {
-    const tomorrow = new Date(kolkataNow.raw.getTime() + 24 * 60 * 60 * 1000)
-    const tParts = new Intl.DateTimeFormat("en-GB", {
-      timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).formatToParts(tomorrow)
-    const tp = {}
-    tParts.forEach((x) => (tp[x.type] = x.value))
-    datePart = `${tp.year}-${tp.month}-${tp.day}`
-  } else if (/^\d{4}-\d{2}-\d{2}$/.test(session.date)) {
-    datePart = session.date
-  } else if (session.scheduledDate) {
+  // 2. If valid scheduledDate exists
+  if (session.scheduledDate && !isNaN(new Date(session.scheduledDate).getTime())) {
     const sParts = new Intl.DateTimeFormat("en-GB", {
       timeZone,
       year: "numeric",
@@ -84,8 +87,84 @@ function getSessionStartTimestamp(session) {
     }).formatToParts(new Date(session.scheduledDate))
     const sp = {}
     sParts.forEach((x) => (sp[x.type] = x.value))
-    datePart = `${sp.year}-${sp.month}-${sp.day}`
+    return `${sp.year}-${sp.month}-${sp.day}`
   }
+
+  // 3. For legacy sessions with "Today" or "Tomorrow" stored in date:
+  const dLower = String(session.date || "").trim().toLowerCase()
+  const baseDate = session.createdAt ? new Date(session.createdAt) : session.scheduledAt ? new Date(session.scheduledAt) : null
+
+  if (baseDate && !isNaN(baseDate.getTime())) {
+    if (dLower === "tomorrow") {
+      const nextDay = new Date(baseDate.getTime() + 24 * 60 * 60 * 1000)
+      const tParts = new Intl.DateTimeFormat("en-GB", {
+        timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).formatToParts(nextDay)
+      const tp = {}
+      tParts.forEach((x) => (tp[x.type] = x.value))
+      return `${tp.year}-${tp.month}-${tp.day}`
+    } else if (dLower === "today") {
+      const tParts = new Intl.DateTimeFormat("en-GB", {
+        timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).formatToParts(baseDate)
+      const tp = {}
+      tParts.forEach((x) => (tp[x.type] = x.value))
+      return `${tp.year}-${tp.month}-${tp.day}`
+    }
+  }
+
+  // Fallback to today in IST
+  const kolkataNow = getKolkataNow()
+  if (dLower === "tomorrow") {
+    return kolkataNow.tomorrowStr
+  }
+  return kolkataNow.todayStr
+}
+
+/**
+ * Formats display date relative to Asia/Kolkata today/tomorrow or returns formatted date string.
+ * Example output: "Today", "Tomorrow", "20 Sep 2026"
+ */
+function formatDisplayDate(session, customNow) {
+  const sessionDateStr = getSessionDateString(session)
+  if (!sessionDateStr) return session?.date || "Today"
+
+  const nowInfo = customNow || getKolkataNow()
+
+  if (sessionDateStr === nowInfo.todayStr) {
+    return "Today"
+  }
+  if (sessionDateStr === nowInfo.tomorrowStr) {
+    return "Tomorrow"
+  }
+
+  // Format as readable date (e.g., "20 Sep 2026")
+  const [year, month, day] = sessionDateStr.split("-").map(Number)
+  const dateObj = new Date(year, month - 1, day, 12, 0, 0)
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(dateObj)
+}
+
+/**
+ * Calculates start epoch timestamp in ms for a session given date string and time string in Asia/Kolkata.
+ */
+function getSessionStartTimestamp(session) {
+  if (!session) return null
+  const timeStr = session.startTime || session.time
+  const slotMin = parseTimeToMinutes(timeStr)
+  if (slotMin === null) return null
+
+  const datePart = getSessionDateString(session)
+  if (!datePart) return null
 
   const [year, month, day] = datePart.split("-").map(Number)
   const hours = Math.floor(slotMin / 60)
@@ -262,6 +341,8 @@ function startSessionNotificationService() {
 module.exports = {
   getKolkataNow,
   parseTimeToMinutes,
+  getSessionDateString,
+  formatDisplayDate,
   getSessionStartTimestamp,
   getSessionEndTimestamp,
   expirePassedSessions,

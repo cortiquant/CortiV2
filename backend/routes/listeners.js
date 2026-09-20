@@ -5,6 +5,13 @@ const ListenerInvitation = require("../models/ListenerInvitation")
 const { logActivity } = require("../services/activityService")
 const { signToken, requireListener, requireAuth } = require("../middleware/auth")
 const { sendBookingConfirmationEmail } = require("../services/emailService")
+const {
+  formatDisplayDate,
+  getSessionDateString,
+  getSessionStartTimestamp,
+  getSessionEndTimestamp,
+  expirePassedSessions,
+} = require("../services/sessionNotificationService")
 
 // Helper: Consistent date and time calculation in Asia/Kolkata timezone
 function getKolkataDates() {
@@ -437,16 +444,15 @@ router.get("/dashboard", requireListener, async (req, res) => {
     const { todayStr, tomorrowStr } = getKolkataDates()
 
     // 1. Sessions Today:
-    // Count only: ACTIVE + COMPLETED (or Active / Completed) today
-    const sessionsTodayDocs = await ListenerSession.find({
+    // Count only: ACTIVE + COMPLETED (or Active / Completed) today in Asia/Kolkata
+    const candidateTodayDocs = await ListenerSession.find({
       listenerId,
-      $or: [
-        { date: "Today" },
-        { date: todayStr },
-      ],
       status: { $in: ["ACTIVE", "COMPLETED", "Active", "In Progress", "Completed"] },
     })
-    const sessionsToday = sessionsTodayDocs.length
+    const sessionsToday = candidateTodayDocs.filter((s) => {
+      const sDateStr = getSessionDateString(s)
+      return sDateStr === todayStr
+    }).length
 
     // 2. Completed and Not Completed Sessions (Lifetime)
     const allListenerSessions = await ListenerSession.find({ listenerId })
@@ -468,18 +474,16 @@ router.get("/dashboard", requireListener, async (req, res) => {
     const completedDocs = allListenerSessions.filter((s) => String(s.status).toLowerCase() === "completed")
 
     // 3. Upcoming Today:
-    // Count only: BOOKED where startTime > now (and today)
+    // Count only: BOOKED where startTime > now (and scheduled for today in Asia/Kolkata)
     const nowMs = Date.now()
-    const bookedDocsToday = await ListenerSession.find({
+    const bookedDocsCandidates = await ListenerSession.find({
       listenerId,
-      $or: [
-        { date: "Today" },
-        { date: todayStr },
-      ],
       status: { $in: ["BOOKED", "Booked", "Confirmed", "Scheduled"] },
     })
 
-    const upcomingToday = bookedDocsToday.filter((s) => {
+    const upcomingToday = bookedDocsCandidates.filter((s) => {
+      const sDateStr = getSessionDateString(s)
+      if (sDateStr !== todayStr) return false
       const startMs = getSessionStartTimestamp(s)
       return startMs && startMs > nowMs
     }).length
@@ -525,7 +529,7 @@ router.get("/dashboard", requireListener, async (req, res) => {
         sessionId: nextSessionDoc.sessionId,
         clientId: effectiveClientId,
         sessionType: nextSessionDoc.sessionType || "Peer Support",
-        date: nextSessionDoc.date,
+        date: formatDisplayDate(nextSessionDoc),
         time: nextSessionDoc.time,
         startTime: nextSessionDoc.startTime || nextSessionDoc.time,
         endTime: nextSessionDoc.endTime,
@@ -733,7 +737,7 @@ router.get("/sessions", requireListener, async (req, res) => {
         id: s._id.toString(),
         sessionId: s.sessionId,
         clientId: s.clientId || "Anonymous Participant",
-        date: s.date,
+        date: formatDisplayDate(s),
         time: s.time,
         startTime: s.startTime || s.time,
         endTime: s.endTime || null,
@@ -770,7 +774,7 @@ router.get("/sessions", requireListener, async (req, res) => {
         id: s._id.toString(),
         sessionId: s.sessionId,
         clientId: s.clientId || "Anonymous Participant",
-        date: s.date,
+        date: formatDisplayDate(s),
         time: s.time,
         startTime: s.startTime || s.time,
         endTime: s.endTime || null,
@@ -1058,7 +1062,7 @@ router.get("/sessions/:id", requireAuth, async (req, res) => {
         id: session._id.toString(),
         sessionId: session.sessionId,
         clientId: effectiveClientId,
-        date: session.date,
+        date: formatDisplayDate(session),
         time: session.time,
         duration: session.durationMinutes || session.duration || 10,
         durationMinutes: session.durationMinutes || session.duration || 10,
@@ -1786,6 +1790,9 @@ router.post("/book", requireAuth, async (req, res) => {
     const randomNum = Math.floor(100000 + Math.random() * 900000)
     const sessionId = `SES${randomNum}`
 
+    // Calculate exact scheduledDate timestamp in UTC for the Asia/Kolkata slot
+    const exactScheduledDate = new Date(`${targetDateStr}T${startTime.trim()}:00+05:30`)
+
     // 9. Create ListenerSession document with status BOOKED
     const newSession = await ListenerSession.create({
       sessionId,
@@ -1795,11 +1802,11 @@ router.post("/book", requireAuth, async (req, res) => {
       listenerId: listener._id,
       listenerName: listener.name,
       organisationId: employee.organisationId,
-      date: targetDayNormalized,
+      date: targetDateStr, // Store canonical calendar date (YYYY-MM-DD)
       time: startTime.trim(),
       startTime: startTime.trim(),
       endTime: calculatedEndTime,
-      scheduledDate: scheduledDate ? new Date(scheduledDate) : new Date(targetDateStr),
+      scheduledDate: exactScheduledDate,
       duration: durationMinutes,
       durationMinutes,
       sessionType: "Peer Support",
@@ -2130,7 +2137,7 @@ router.get("/sessions/upcoming", requireAuth, async (req, res) => {
         listenerName: s.listenerName || s.listenerId?.name || "Peer Listener",
         clientId: effectiveClientId,
         sessionType: s.sessionType || "Peer Support",
-        date: s.date,
+        date: formatDisplayDate(s),
         time: s.time,
         duration: s.durationMinutes || s.duration || 10,
         durationMinutes: s.durationMinutes || s.duration || 10,

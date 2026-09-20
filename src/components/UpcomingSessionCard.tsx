@@ -129,13 +129,18 @@ export default function UpcomingSessionCard({
     return null
   }
 
-  // Format countdown string: "Starts in MM:SS"
+  // Format countdown string: "Starts in HH:MM:SS" or "Starts in MM:SS"
   let countdownText = ""
   if (isBeforeStart && startMs !== null) {
     const diffSec = Math.max(0, Math.floor((startMs - fiveMinutesMs - now) / 1000))
-    const minutes = Math.floor(diffSec / 60)
+    const hours = Math.floor(diffSec / 3600)
+    const minutes = Math.floor((diffSec % 3600) / 60)
     const seconds = diffSec % 60
-    countdownText = `Starts in ${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+    if (hours > 0) {
+      countdownText = `Starts in ${hours}h ${String(minutes).padStart(2, "0")}m`
+    } else {
+      countdownText = `Starts in ${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+    }
   }
 
   const handleEnterSession = (e?: React.MouseEvent | React.TouchEvent) => {

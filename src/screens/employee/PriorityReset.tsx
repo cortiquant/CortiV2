@@ -11,14 +11,19 @@ export interface TaskItem {
   estimatedMinutes: number;
   reason?: string;
   stressRelief?: string;
+  nextAction?: string;
+  order?: number;
+  role?: string;
 }
 
 export interface PriorityPathResult {
   overview: string;
+  clarificationQuestion?: string | null;
   firstFocus: TaskItem | null;
   nextStep: TaskItem | null;
   laterTasks: TaskItem[];
   quickWin: TaskItem | null;
+  sequence?: TaskItem[];
   recoverySuggestion: {
     title: string;
     activity: string;
@@ -66,18 +71,61 @@ export function recordCompletedTaskInProfile(taskText: string) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Client-side AI Fallback prioritisation logic (Intelligent Heuristics)
+// Client-side Intelligent Task Extractor & Multi-factor Fallback
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function getFallbackPriorityPath(rawTasks: string[], msiScore: number = 50): PriorityPathResult {
-  const clean = rawTasks.map((t) => t.trim()).filter((t) => t.length > 0);
+export function extractClientTasks(input: string): string[] {
+  if (!input || !input.trim()) return [];
+  const raw = input.trim();
+
+  // Multi-line
+  const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length > 1) {
+    return lines.map((l) => l.replace(/^(\d+[\.\)]\s*|[-*•]\s*)/, "").trim()).filter(Boolean);
+  }
+
+  // Numbered list
+  if (/\b\d+[\.\)]\s+/.test(raw)) {
+    const parts = raw.split(/\b\d+[\.\)]\s+/).map((p) => p.trim()).filter(Boolean);
+    if (parts.length > 1) return parts;
+  }
+
+  // Semicolons or bullets
+  if (raw.includes(";") || raw.includes("•")) {
+    const parts = raw.split(/[;•]+/).map((p) => p.trim()).filter(Boolean);
+    if (parts.length > 1) return parts;
+  }
+
+  // Natural sequencing phrases
+  if (/\b(and\s+then|after\s+that|followed\s+by)\b/i.test(raw)) {
+    const parts = raw.split(/\b(?:and\s+then|after\s+that|followed\s+by)\b/i).map((p) => p.trim()).filter(Boolean);
+    if (parts.length > 1) return parts;
+  }
+
+  // Commas if 2+ distinct phrases
+  if (raw.includes(",")) {
+    const commaParts = raw.split(",").map((p) => p.replace(/^\s*(and\s+)/i, "").trim()).filter(Boolean);
+    if (commaParts.length >= 2 && commaParts.every((p) => p.length >= 3 && p.length <= 150)) {
+      return commaParts;
+    }
+  }
+
+  return [raw];
+}
+
+export function getFallbackPriorityPath(rawInput: string | string[], msiScore: number = 50): PriorityPathResult {
+  const tasks = Array.isArray(rawInput) ? rawInput : extractClientTasks(rawInput);
+  const clean = tasks.map((t) => t.trim()).filter((t) => t.length > 0);
+
   if (clean.length === 0) {
     return {
-      overview: "No tasks to prioritize. Add what is on your mind to create your Priority Path.",
+      overview: "No tasks to prioritize. Share what is on your plate to map your Priority Path.",
+      clarificationQuestion: null,
       firstFocus: null,
       nextStep: null,
       laterTasks: [],
       quickWin: null,
+      sequence: [],
       recoverySuggestion: {
         title: "2-Minute Breathing Reset",
         activity: "Take 4 slow breaths to down-regulate before continuing.",
@@ -89,96 +137,118 @@ export function getFallbackPriorityPath(rawTasks: string[], msiScore: number = 5
 
   const analyzed = clean.map((text, idx) => {
     const l = text.toLowerCase();
-    let urgency = 0;
-    let cognitive = 2; // 1: light/quick, 2: medium, 3: heavy
+    let urgencyScore = 0;
+    let cognitiveLoad = 2; // 1: light/quick, 2: medium, 3: heavy
     let isQuick = false;
+    let dependencyWeight = 0;
 
-    if (/\b(today|urgent|asap|now|critical|deadline|due|meeting|call)\b/.test(l)) urgency += 40;
-    if (/\b(submit|finish|send|reply|review|check|email|ping)\b/.test(l)) urgency += 20;
+    if (/\b(today|urgent|asap|now|critical|deadline|due|meeting|call|by\s+\d+|am\b|pm\b)\b/.test(l)) urgencyScore += 50;
+    if (/\b(client|submit|deliver|present|boss|manager|payroll|invoice|exam)\b/.test(l)) urgencyScore += 30;
+    if (/\b(finish|send|reply|review|check|email|ping|approve)\b/.test(l)) urgencyScore += 15;
 
-    if (/\b(reply|email|call|text|ping|check|quick|pay|bill|print)\b/.test(l)) {
-      cognitive = 1;
+    if (/\b(reply|email|call|text|ping|check|quick|pay|bill|print|trash|dishes|groceries)\b/.test(l)) {
+      cognitiveLoad = 1;
       isQuick = true;
-    } else if (/\b(strategy|presentation|report|deck|analysis|architecture|budget|review pr)\b/.test(l)) {
-      cognitive = 3;
+    } else if (/\b(strategy|presentation|report|deck|analysis|architecture|budget|review pr|draft|write)\b/.test(l)) {
+      cognitiveLoad = 3;
     }
 
-    const estimatedMinutes = isQuick ? 10 : cognitive === 3 ? 35 : 20;
+    if (/\b(review|prep|draft|read|gather|outline)\b/.test(l)) {
+      dependencyWeight += 20;
+    }
+
+    const totalPriorityScore = urgencyScore + dependencyWeight + (isQuick && msiScore >= 60 ? 30 : 0) + (clean.length - idx) * 0.1;
+    const estimatedMinutes = isQuick ? 10 : cognitiveLoad === 3 ? 35 : 20;
+
     return {
       id: `task_${Date.now()}_${idx}`,
       text,
-      urgency,
-      cognitive,
+      urgencyScore,
+      cognitiveLoad,
       isQuick,
+      dependencyWeight,
+      totalPriorityScore,
       estimatedMinutes,
       originalIndex: idx,
     };
   });
 
-  // Energy & MSI Matching:
-  // High MSI (>= 60): Start with quick wins or low cognitive load tasks first to restore momentum
-  // Low/Moderate MSI (< 60): Deep work or high urgency tasks first
-  let firstIdx = 0;
+  const sorted = [...analyzed].sort((a, b) => b.totalPriorityScore - a.totalPriorityScore);
+
+  let first = sorted[0];
   if (msiScore >= 60) {
-    const quickMatch = analyzed.findIndex((a) => a.isQuick);
-    firstIdx = quickMatch !== -1 ? quickMatch : 0;
-  } else {
-    let topUrgency = -1;
-    analyzed.forEach((a, i) => {
-      if (a.urgency > topUrgency) {
-        topUrgency = a.urgency;
-        firstIdx = i;
-      }
-    });
+    const quickHigh = sorted.find((s) => s.isQuick && s.urgencyScore > 0) || sorted.find((s) => s.isQuick);
+    if (quickHigh) first = quickHigh;
   }
 
-  const firstItem = analyzed[firstIdx];
-  const rest = analyzed.filter((_, i) => i !== firstIdx);
-
-  const quickWinItem = rest.find((r) => r.isQuick) || (firstItem.isQuick && rest.length > 0 ? rest[0] : null);
-  const remainingNonQuick = rest.filter((r) => r !== quickWinItem);
-
-  const nextItem = remainingNonQuick.length > 0 ? remainingNonQuick[0] : rest.length > 0 ? rest[0] : null;
-  const laterItems = rest.filter((r) => r !== nextItem && r !== quickWinItem);
+  const remaining = sorted.filter((s) => s.id !== first.id);
+  const next = remaining.length > 0 ? remaining[0] : null;
+  const later = remaining.length > 1 ? remaining.slice(1) : [];
+  const quickWinCandidate = sorted.find((s) => s.isQuick && s.id !== first.id);
 
   const overview =
     msiScore >= 60
-      ? `You have ${clean.length} pending items and your stress signals are elevated. Starting with "${firstItem.text}" clears uncertainty and unblocks your momentum without cognitive exhaustion.`
-      : `You have ${clean.length} open responsibilities. Knocking out "${firstItem.text}" first will unlock immediate momentum and remove the largest obstacle on your schedule.`;
+      ? `You have ${clean.length} pending items with elevated stress detected (${msiScore}%). Starting with "${first.text}" eliminates immediate friction and restores control without cognitive exhaustion.`
+      : `Evaluating your ${clean.length} open responsibilities, tackling "${first.text}" first gives you the highest leverage, resolving the critical path and removing the main blocker from your schedule.`;
+
+  const firstFocus: TaskItem = {
+    id: first.id,
+    text: first.text,
+    estimatedMinutes: first.estimatedMinutes,
+    reason: first.isQuick
+      ? "Clears immediate uncertainty with minimal mental effort, unblocking your working memory."
+      : "Carries the most critical timeline impact and unblocks the subsequent steps on your agenda.",
+    stressRelief: "Clears working memory overload and gives you immediate agency over your timeline.",
+    nextAction: `Spend the first 2 minutes opening the draft or workspace for "${first.text}".`,
+    order: 1,
+    role: "First Focus",
+  };
+
+  const nextStep: TaskItem | null = next
+    ? {
+        id: next.id,
+        text: next.text,
+        estimatedMinutes: next.estimatedMinutes,
+        reason: "Builds directly on your momentum once your primary focus is complete.",
+        order: 2,
+        role: "Next Step",
+      }
+    : null;
+
+  const laterTasks: TaskItem[] = later.map((l, idx) => ({
+    id: l.id,
+    text: l.text,
+    estimatedMinutes: l.estimatedMinutes,
+    reason: "Can be held without penalty until higher leverage items are cleared.",
+    order: 3 + idx,
+    role: "Later",
+  }));
+
+  const sequence: TaskItem[] = [
+    firstFocus,
+    ...(nextStep ? [nextStep] : []),
+    ...laterTasks,
+  ];
 
   return {
     overview,
-    firstFocus: {
-      id: firstItem.id,
-      text: firstItem.text,
-      estimatedMinutes: firstItem.estimatedMinutes,
-      reason: firstItem.isQuick
-        ? "Quick communication reduces uncertainty and eliminates background anxiety with minimal effort."
-        : "Resolves immediate delivery pressure and unblocks subsequent steps on your agenda.",
-      stressRelief: "Clears working memory overload and gives you immediate agency over your timeline.",
-    },
-    nextStep: nextItem
-      ? {
-          id: nextItem.id,
-          text: nextItem.text,
-          estimatedMinutes: nextItem.estimatedMinutes,
-          reason: "Builds directly on your momentum once your primary focus is complete.",
-        }
+    clarificationQuestion: clean.length > 1 && sorted.every((s) => s.urgencyScore === 0)
+      ? "Assuming tasks have equal deadlines; adjust if any item is due sooner."
       : null,
-    laterTasks: laterItems.map((l) => ({
-      id: l.id,
-      text: l.text,
-      estimatedMinutes: l.estimatedMinutes,
-      reason: "Can be held without penalty until higher leverage items are cleared.",
-    })),
-    quickWin: quickWinItem
+    firstFocus,
+    nextStep,
+    laterTasks,
+    quickWin: quickWinCandidate
       ? {
-          id: quickWinItem.id,
-          text: quickWinItem.text,
-          estimatedMinutes: quickWinItem.estimatedMinutes,
+          id: quickWinCandidate.id,
+          text: quickWinCandidate.text,
+          estimatedMinutes: quickWinCandidate.estimatedMinutes,
           reason: "A lightweight task you can knock out in 10 minutes for an effortless dopamine boost.",
+          order: 99,
+          role: "Quick Win",
         }
       : null,
+    sequence,
     recoverySuggestion: {
       title: msiScore >= 60 ? "3-Minute Autonomic Reset" : "Mindful Screen Pause",
       activity:
@@ -195,14 +265,16 @@ export function getFallbackPriorityPath(rawTasks: string[], msiScore: number = 5
 // Service Function: Fetch AI Priority Path from Backend
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function fetchAIPriorityPath(tasks: string[], userMsi: number): Promise<PriorityPathResult> {
+export async function fetchAIPriorityPath(rawInputText: string, userMsi: number): Promise<PriorityPathResult> {
   const history = getPriorityLearningProfile();
+  const extracted = extractClientTasks(rawInputText);
 
   try {
     const res = await apiRequest<any>("/api/ai/priority-reset", {
       method: "POST",
       body: JSON.stringify({
-        tasks,
+        rawInput: rawInputText,
+        tasks: extracted,
         msi: userMsi,
         history,
       }),
@@ -212,31 +284,60 @@ export async function fetchAIPriorityPath(tasks: string[], userMsi: number): Pro
       const d = res.data.data;
       return {
         overview: d.overview,
-        firstFocus: d.firstFocus ? {
-          id: `task_focus_${Date.now()}`,
-          text: d.firstFocus.task,
-          estimatedMinutes: d.firstFocus.estimatedMinutes || 15,
-          reason: d.firstFocus.reason,
-          stressRelief: d.firstFocus.stressRelief,
-        } : null,
-        nextStep: d.nextStep ? {
-          id: `task_next_${Date.now()}`,
-          text: d.nextStep.task,
-          estimatedMinutes: d.nextStep.estimatedMinutes || 20,
-          reason: d.nextStep.reason,
-        } : null,
-        laterTasks: Array.isArray(d.laterTasks) ? d.laterTasks.map((t: any, i: number) => ({
-          id: `task_later_${Date.now()}_${i}`,
-          text: t.task,
-          estimatedMinutes: t.estimatedMinutes || 30,
-          reason: t.reason,
-        })) : [],
-        quickWin: d.quickWin ? {
-          id: `task_quick_${Date.now()}`,
-          text: d.quickWin.task,
-          estimatedMinutes: d.quickWin.estimatedMinutes || 10,
-          reason: d.quickWin.reason,
-        } : null,
+        clarificationQuestion: d.clarificationQuestion || null,
+        firstFocus: d.firstFocus
+          ? {
+              id: `task_focus_${Date.now()}`,
+              text: d.firstFocus.task,
+              estimatedMinutes: d.firstFocus.estimatedMinutes || 15,
+              reason: d.firstFocus.reason,
+              stressRelief: d.firstFocus.stressRelief,
+              nextAction: d.firstFocus.nextAction,
+              order: 1,
+              role: "First Focus",
+            }
+          : null,
+        nextStep: d.nextStep
+          ? {
+              id: `task_next_${Date.now()}`,
+              text: d.nextStep.task,
+              estimatedMinutes: d.nextStep.estimatedMinutes || 20,
+              reason: d.nextStep.reason,
+              order: 2,
+              role: "Next Step",
+            }
+          : null,
+        laterTasks: Array.isArray(d.laterTasks)
+          ? d.laterTasks.map((t: any, i: number) => ({
+              id: `task_later_${Date.now()}_${i}`,
+              text: t.task,
+              estimatedMinutes: t.estimatedMinutes || 30,
+              reason: t.reason,
+              order: 3 + i,
+              role: "Later",
+            }))
+          : [],
+        quickWin: d.quickWin
+          ? {
+              id: `task_quick_${Date.now()}`,
+              text: d.quickWin.task,
+              estimatedMinutes: d.quickWin.estimatedMinutes || 10,
+              reason: d.quickWin.reason,
+              order: 99,
+              role: "Quick Win",
+            }
+          : null,
+        sequence: Array.isArray(d.sequence)
+          ? d.sequence.map((s: any, i: number) => ({
+              id: `task_seq_${Date.now()}_${i}`,
+              text: s.task,
+              estimatedMinutes: s.estimatedMinutes || 20,
+              reason: s.reason,
+              nextAction: s.nextAction,
+              order: s.order || i + 1,
+              role: s.role,
+            }))
+          : [],
         recoverySuggestion: d.recoverySuggestion || {
           title: "Quick Breathing Reset",
           activity: "Take a quiet moment to breathe and clear your thoughts.",
@@ -250,7 +351,7 @@ export async function fetchAIPriorityPath(tasks: string[], userMsi: number): Pro
   }
 
   // Safe fallback if API unconfigured or unreachable
-  return getFallbackPriorityPath(tasks, userMsi);
+  return getFallbackPriorityPath(rawInputText, userMsi);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -319,19 +420,16 @@ export default function PriorityReset({ onBack, onNav }: PriorityResetProps) {
 
   // Handle AI analysis triggering
   async function handleAnalyzePriorities() {
-    const rawLines = taskInput
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0);
-
-    if (rawLines.length === 0) return;
+    const trimmedInput = taskInput.trim();
+    if (!trimmedInput) return;
 
     setCurrentStep("organising");
 
     // Dynamic empathetic loading messages
     const msgs = [
-      "Analyzing cognitive load & deadlines...",
-      "Evaluating stress impact & quick wins...",
+      "Analyzing complete input & extracting tasks...",
+      "Evaluating deadlines, importance & blockers...",
+      "Detecting dependencies & cognitive load...",
       `Matching energy requirements with current MSI (${userMsi}%)...`,
       "Synthesizing your personalized Priority Path...",
     ];
@@ -339,10 +437,10 @@ export default function PriorityReset({ onBack, onNav }: PriorityResetProps) {
     const msgInterval = setInterval(() => {
       msgIdx = (msgIdx + 1) % msgs.length;
       setAnalyzingMessage(msgs[msgIdx]);
-    }, 800);
+    }, 700);
 
     try {
-      const result = await fetchAIPriorityPath(rawLines, userMsi);
+      const result = await fetchAIPriorityPath(trimmedInput, userMsi);
       clearInterval(msgInterval);
       setPriorityPath(result);
       if (result.firstFocus) {
@@ -352,7 +450,7 @@ export default function PriorityReset({ onBack, onNav }: PriorityResetProps) {
       setCurrentStep("organised");
     } catch (err) {
       clearInterval(msgInterval);
-      const fallback = getFallbackPriorityPath(rawLines, userMsi);
+      const fallback = getFallbackPriorityPath(trimmedInput, userMsi);
       setPriorityPath(fallback);
       if (fallback.firstFocus) {
         setActiveTask(fallback.firstFocus);
@@ -430,6 +528,8 @@ export default function PriorityReset({ onBack, onNav }: PriorityResetProps) {
     }
   }
 
+  const detectedTaskCount = extractClientTasks(taskInput).length;
+
   return (
     <div className="flex flex-col px-5 py-5 overflow-y-auto pb-28 min-h-full bg-midnight text-warm-white">
       {/* ───────────────────────────────────────────────────────────────────── */}
@@ -449,7 +549,7 @@ export default function PriorityReset({ onBack, onNav }: PriorityResetProps) {
               </svg>
             </button>
             <span className="text-[10px] font-bold uppercase tracking-widest text-lavender-soft">
-              Priority Rest · AI Coach
+              Priority Reset · AI Coach
             </span>
           </div>
 
@@ -460,7 +560,7 @@ export default function PriorityReset({ onBack, onNav }: PriorityResetProps) {
               <h1 className="text-2xl font-bold text-warm-white leading-tight">What is on your plate?</h1>
             </div>
             <p className="text-sm text-text-secondary leading-relaxed">
-              Don't worry about order or sequence. Enter work, personal tasks, deadlines, meetings, or chores all in one place.
+              Write naturally in any format — bullet points, comma-separated lists, a single sentence, or random order. The AI analyzes the whole picture.
             </p>
           </div>
 
@@ -475,8 +575,8 @@ export default function PriorityReset({ onBack, onNav }: PriorityResetProps) {
               </p>
               <p className="text-[11px] text-text-muted mt-0.5">
                 {userMsi >= 60
-                  ? "Elevated strain detected: Priority Path will match your cognitive load with early low-friction wins."
-                  : "Balanced energy: Priority Path will optimize for high impact and clearing major blockers."}
+                  ? "Elevated strain detected: Priority Path will ease cognitive paralysis with high-relief clarity wins."
+                  : "Balanced energy: Priority Path will optimize for highest impact and clearing critical blockers."}
               </p>
             </div>
           </div>
@@ -486,14 +586,14 @@ export default function PriorityReset({ onBack, onNav }: PriorityResetProps) {
             <textarea
               className="w-full rounded-2xl bg-surface border border-border-p text-warm-white placeholder-text-muted/50 text-sm p-4 resize-none focus:outline-none focus:border-purple-core transition-colors leading-relaxed font-mono-data"
               rows={8}
-              placeholder={`Finish presentation for 4pm\nReply to client email\nSubmit expense report\nPrepare 1:1 notes\nCall insurance provider\nReview PRs\nPick up groceries`}
+              placeholder={`Example:\n"Finish client presentation for 4pm meeting, reply to Slack ping about lunch, review the architecture doc, and pick up groceries."\n\nOr enter line by line in any order.`}
               value={taskInput}
               onChange={(e) => setTaskInput(e.target.value)}
             />
             <div className="flex justify-between items-center px-1">
-              <span className="text-xs text-text-muted">Enter one task per line in any order</span>
+              <span className="text-xs text-text-muted">Paragraph, commas, or line breaks supported</span>
               <span className="text-xs text-text-muted font-mono-data">
-                {taskInput.split("\n").filter((l) => l.trim().length > 0).length} tasks
+                {detectedTaskCount} {detectedTaskCount === 1 ? "task detected" : "tasks detected"}
               </span>
             </div>
           </div>
@@ -566,9 +666,9 @@ export default function PriorityReset({ onBack, onNav }: PriorityResetProps) {
 
             <button
               onClick={() => setCurrentStep("dump")}
-              className="text-xs text-text-muted hover:text-warm-white transition-colors cursor-pointer"
+              className="text-xs text-lavender-soft hover:text-warm-white transition-colors cursor-pointer font-medium"
             >
-              Edit Tasks
+              Refine Tasks ✏️
             </button>
           </div>
 
@@ -576,9 +676,24 @@ export default function PriorityReset({ onBack, onNav }: PriorityResetProps) {
           <div>
             <h1 className="text-2xl font-bold text-warm-white tracking-tight">Your Priority Path</h1>
             <p className="text-xs text-text-muted mt-1">
-              Personalized sequence optimized for cognitive relief and momentum.
+              Personalized sequence optimized for cognitive relief, deadlines, and momentum.
             </p>
           </div>
+
+          {/* Clarification / Stated Assumption Banner if present */}
+          {priorityPath.clarificationQuestion && (
+            <div className="rounded-2xl bg-amber-500/[0.08] border border-amber-500/25 p-3.5 flex items-start gap-3">
+              <span className="text-sm">💡</span>
+              <div className="flex-1">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-amber-400 mb-0.5">
+                  Coach Note & Assumption
+                </p>
+                <p className="text-xs text-warm-white/90 leading-relaxed">
+                  {priorityPath.clarificationQuestion}
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Conversational AI Reasoning Overview */}
           <div className="rounded-2xl bg-purple-core/10 border border-purple-core/25 p-4.5 space-y-2">
@@ -601,7 +716,7 @@ export default function PriorityReset({ onBack, onNav }: PriorityResetProps) {
               <div className="flex items-center justify-between">
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-purple-core/30 border border-purple-core/40 text-[10px] font-bold uppercase tracking-wider text-lavender-bright">
                   <span className="w-1.5 h-1.5 rounded-full bg-lavender-bright animate-pulse" />
-                  1. First Focus
+                  1. Recommended First Priority
                 </span>
                 <span className="text-xs text-lavender-soft font-mono-data">
                   ~{priorityPath.firstFocus.estimatedMinutes} min
@@ -624,6 +739,18 @@ export default function PriorityReset({ onBack, onNav }: PriorityResetProps) {
                     {priorityPath.firstFocus.reason}
                   </p>
                 </div>
+
+                {priorityPath.firstFocus.nextAction && (
+                  <div className="pt-2 border-t border-white/5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-lavender-bright mb-0.5">
+                      Small Next Step To Begin
+                    </p>
+                    <p className="text-warm-white/90 leading-relaxed font-medium">
+                      {priorityPath.firstFocus.nextAction}
+                    </p>
+                  </div>
+                )}
+
                 {priorityPath.firstFocus.stressRelief && (
                   <div className="pt-2 border-t border-white/5">
                     <p className="text-[10px] font-bold uppercase tracking-wider text-c-success mb-0.5">

@@ -111,16 +111,23 @@ router.post("/record", requireActiveEmployee, async (req, res) => {
         if (targetListener) {
           const randNum = Math.floor(1000 + Math.random() * 9000)
           const sid = `S-${randNum}`
-          const bookingDate = metadata.day === "tomorrow" ? "Tomorrow" : "Today"
+          const { getKolkataNow } = require("../services/sessionNotificationService")
+          const kolkataNow = getKolkataNow()
+          const isTomorrow = metadata.day === "tomorrow"
+          const targetDateStr = isTomorrow ? kolkataNow.tomorrowStr : kolkataNow.todayStr
+          const bookingDateLabel = isTomorrow ? "Tomorrow" : "Today"
           const bookingTime = metadata.timeSlot || "18:00"
+          const exactScheduledDate = new Date(`${targetDateStr}T${bookingTime.trim()}:00+05:30`)
 
           const lSession = await ListenerSession.create({
             sessionId: sid,
             listenerId: targetListener._id,
             employeeId: user._id,
             organisationId: user.organisationId,
-            date: bookingDate,
+            date: targetDateStr,
             time: bookingTime,
+            startTime: bookingTime,
+            scheduledDate: exactScheduledDate,
             duration: 45,
             status: "Requested",
             scheduledAt: new Date(),
@@ -133,7 +140,7 @@ router.post("/record", requireActiveEmployee, async (req, res) => {
             listenerId: targetListener._id,
             type: "session_request",
             title: "New Session Request",
-            message: `A new anonymous listening session (${sid}) has been requested for ${bookingDate} at ${bookingTime}.`,
+            message: `A new anonymous listening session (${sid}) has been requested for ${bookingDateLabel} at ${bookingTime}.`,
             data: { sessionId: sid, listenerSessionId: lSession._id.toString() },
           })
         }

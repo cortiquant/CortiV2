@@ -200,12 +200,16 @@ router.post("/root-cause-recommendations", requireActiveEmployee, async (req, re
 router.post("/priority-reset", requireActiveEmployee, async (req, res) => {
   try {
     const user = req.user
-    const { tasks, history, msi: requestedMsi } = req.body
+    const { tasks, rawInput, history, msi: requestedMsi, feeling, energyLevel } = req.body
 
-    if (!Array.isArray(tasks) || tasks.length === 0) {
+    const inputData = rawInput || tasks
+    const hasInput = (typeof inputData === "string" && inputData.trim().length > 0) ||
+      (Array.isArray(inputData) && inputData.length > 0)
+
+    if (!hasInput) {
       return res.status(400).json({
         success: false,
-        message: "A list of tasks is required for Priority Path analysis.",
+        message: "A list or description of tasks is required for Priority Path analysis.",
       })
     }
 
@@ -223,15 +227,20 @@ router.post("/priority-reset", requireActiveEmployee, async (req, res) => {
     const userContext = {
       department: user.department || null,
       designation: user.designation || null,
+      feeling: feeling || null,
+      energyLevel: energyLevel || null,
     }
 
     const { generatePriorityPathAnalysis } = require("../services/aiRecommendationService")
     const priorityPath = await generatePriorityPathAnalysis({
-      tasks,
+      rawInput: typeof rawInput === "string" ? rawInput : null,
+      tasks: Array.isArray(tasks) ? tasks : [],
       msi: resolvedMsi,
       history: history || {},
       userContext,
     })
+
+    const taskCount = priorityPath.sequence ? priorityPath.sequence.length : (Array.isArray(tasks) ? tasks.length : 1)
 
     await logActivity({
       req,
@@ -240,7 +249,7 @@ router.post("/priority-reset", requireActiveEmployee, async (req, res) => {
       status: "Success",
       organisationId: user.organisationId,
       entityType: "PriorityReset",
-      details: `AI Priority Path generated for ${tasks.length} tasks (MSI: ${resolvedMsi})`,
+      details: `AI Priority Path generated for ${taskCount} tasks (MSI: ${resolvedMsi})`,
     })
 
     return res.status(200).json({

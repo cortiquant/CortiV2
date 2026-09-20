@@ -869,82 +869,161 @@ async function generateDumpBagReflection(userText) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Priority Rest / Priority Path AI Module
+// Priority Reset / Priority Path AI Module
 // ─────────────────────────────────────────────────────────────────────────────
 
-function buildPriorityPrompt({ tasks, msi, history, userContext }) {
-  const taskListFormatted = tasks.map((t, i) => `${i + 1}. ${t}`).join("\n")
+/**
+ * Intelligent task extractor for client or fallback heuristic processing.
+ * Separates tasks intelligently by line breaks, numbering, bullet points,
+ * semicolons, and natural language conjunctions (e.g. "and then", "after that").
+ */
+function extractTasksFromRawInput(input) {
+  if (Array.isArray(input)) {
+    // If array has only 1 element with multiple tasks embedded, split it
+    if (input.length === 1 && typeof input[0] === "string" && input[0].length > 25) {
+      return extractTasksFromRawInput(input[0])
+    }
+    return input.map((t) => (typeof t === "string" ? t.trim() : "")).filter(Boolean)
+  }
+
+  if (typeof input !== "string" || !input.trim()) return []
+
+  const raw = input.trim()
+
+  // First check if there are multiple lines
+  const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+  if (lines.length > 1) {
+    // Strip leading bullets/numbering (e.g. "1. ", "- ", "* ")
+    return lines.map((l) => l.replace(/^(\d+[\.\)]\s*|[-*•]\s*)/, "").trim()).filter(Boolean)
+  }
+
+  // Single line or single block: inspect for numbered lists (e.g., "1. ... 2. ...")
+  if (/\b\d+[\.\)]\s+/.test(raw)) {
+    const parts = raw.split(/\b\d+[\.\)]\s+/).map((p) => p.trim()).filter(Boolean)
+    if (parts.length > 1) return parts
+  }
+
+  // Inspect for bullets or semicolons
+  if (raw.includes(";") || raw.includes("•")) {
+    const parts = raw.split(/[;•]+/).map((p) => p.trim()).filter(Boolean)
+    if (parts.length > 1) return parts
+  }
+
+  // Inspect for natural sequencing phrases: "and then", "after that", "followed by"
+  if (/\b(and\s+then|after\s+that|followed\s+by)\b/i.test(raw)) {
+    const parts = raw.split(/\b(?:and\s+then|after\s+that|followed\s+by)\b/i).map((p) => p.trim()).filter(Boolean)
+    if (parts.length > 1) return parts
+  }
+
+  // Inspect for comma separation if there are 3+ items or items look like distinct clauses
+  if (raw.includes(",")) {
+    const commaParts = raw.split(",").map((p) => p.replace(/^\s*(and\s+)/i, "").trim()).filter(Boolean)
+    if (commaParts.length >= 2 && commaParts.every((p) => p.length >= 3 && p.length <= 150)) {
+      return commaParts
+    }
+  }
+
+  return [raw]
+}
+
+function buildPriorityPrompt({ rawInput, tasks, msi, history, userContext }) {
   const msiScore = msi != null ? msi : 50
   const dept = userContext?.department ? `Department: ${userContext.department}` : ""
   const role = userContext?.designation ? `Role: ${userContext.designation}` : ""
-  
+
   let historyContext = "No prior task completion history recorded."
   if (history && Array.isArray(history.completedTasks) && history.completedTasks.length > 0) {
     historyContext = `Recent completed tasks: ${history.completedTasks.slice(0, 5).join(", ")}. Typical preferred quick-win focus.`
   }
 
-  return `You are CortiQuant's empathetic AI Productivity & Cognitive Wellbeing Coach.
-Analyze the user's list of tasks and build their personalized "Priority Path".
-Do NOT simply sort tasks randomly or only based on order, length, or keywords.
-The order entered by the user should NOT influence the final recommendation.
+  const rawInputText = typeof rawInput === "string" && rawInput.trim()
+    ? rawInput.trim()
+    : Array.isArray(tasks)
+    ? tasks.join("\n")
+    : ""
+
+  return `You are CortiQuant's empathetic, highly intelligent AI Cognitive Wellbeing & Productivity Coach.
+Analyze the user's input, extract all distinct tasks, and synthesize their personalized "Priority Path".
+
+CRITICAL RULE ON ORDERING:
+- Users enter tasks in arbitrary, random order, often mentioning trivial or immediate chores first.
+- NEVER default to the first-mentioned task simply because it appears first.
+- The order entered by the user must NOT dictate the priority order.
+- Do NOT output generic robotic responses like "Let's do the first task", "Start with task 1", or "Complete task 1 then task 2".
 
 USER CONTEXT:
-Current Mind Stress Index (MSI): ${msiScore}/100 (0-20: Normal, 21-40: Mild Stress, 41-60: Elevated/Moderate, 61-80: High Stress, 81-100: Burnout)
+Current Mind Stress Index (MSI): ${msiScore}/100
+(0-20: Normal, 21-40: Mild Stress, 41-60: Elevated/Moderate, 61-80: High Stress, 81-100: Burnout)
 ${dept}
 ${role}
 ${historyContext}
 
-USER'S RAW TASKS (Work, personal, meetings, deadlines, chores mixed):
-${taskListFormatted}
+USER'S RAW INPUT (may be one sentence, paragraph, comma-separated, bulleted, or multi-line):
+"""
+${rawInputText}
+"""
 
-DEEP TASK ANALYSIS RULES:
-1. Urgency: Evaluate deadline proximity and real consequences of delay.
-2. Importance: Impact on core goals, dependencies, unblocking team/family, long-term relief.
-3. Cognitive Load: Mental friction, complexity, emotional difficulty.
-4. Stress Impact: Which task creates the most background anxiety, and which one will create maximum mental relief once completed.
-5. Energy Matching with MSI:
-   - If MSI is Elevated/High (>= 60): Suggest quick wins or uncertainty-clearing tasks first to unblock cognitive paralysis, restore agency, and avoid immediate burnout.
-   - If MSI is Mild/Normal (< 60): Suggest tackling the highest impact or core focus task first while energy is fresh.
+DEEP MULTI-FACTOR ANALYSIS GUIDELINES:
+1. Task Extraction:
+   - Identify every distinct task in the input, even if written in a single run-on sentence or separated by commas/conjunctions.
+   - Clean and extract the true essence of each task.
 
-OUTPUT REQUIREMENTS:
-- Overview: A warm, personalized explanation of your reasoning (2-3 sentences). Explain specifically what to do first and why, addressing the trade-offs (e.g. "You have X pending tasks. Although [task A] has a near deadline, finishing [task B] first will reduce uncertainty and unblock your next steps...").
-- First Focus: Exactly 1 task that the user should start right now, with realistic estimated minutes, clear reasoning on why it comes first, and expected stress relief.
-- Next Step: Exactly 1 task to tackle immediately after.
-- Later: Array of tasks that can safely wait, reassuring the user that they can set them aside without guilt.
-- Quick Win: Exactly 1 small, low-friction task that gives immediate momentum and dopamine.
-- Recovery Suggestion: A tailored 2-5 minute reset activity linked to their workload and stress state (e.g., breathing reset, dump bag, gentle screen pause).
+2. Urgency & Deadlines:
+   - Identify explicit deadlines (e.g. "by 3pm", "tomorrow 9am", "today", "before client meeting").
+   - Assess actual consequences of delay.
 
-OUTPUT STRICT VALID JSON:
+3. Importance & Dependencies:
+   - Identify dependencies where one task must happen before another (e.g. reviewing data/docs before writing slides/reports).
+   - Assess impact on unblocking team members, clients, or essential commitments.
+
+4. Cognitive Friction & Stress Impact:
+   - Distinguish high-focus deep work from low-effort administrative/communication tasks.
+   - Assess which task causes the highest background anxiety or dread, and which unblocks momentum.
+
+5. Energy Matching with Current MSI (${msiScore}/100):
+   - If MSI is Elevated/High (>= 60): The user is experiencing mental strain or cognitive overload. Prioritize an early clarity-unblocking task or high-relief quick win first to break paralysis, rebuild self-efficacy, and prevent burnout.
+   - If MSI is Mild/Normal (< 60): The user has available cognitive bandwidth. Tackle the highest-impact deliverable or foundational blocker first while energy is fresh.
+
+6. Ambiguity Handling:
+   - If deadlines or urgency cannot be determined, provide a thoughtful, polite clarification question or clearly stated assumption in the "clarificationQuestion" field. Do NOT hallucinate made-up deadlines or details.
+
+7. Personal, Human & Supportive Tone:
+   - Explain the trade-offs naturally: "While [Task A] is on your mind, starting with [Task B] resolves the blocker needed for your meeting and gives you instant breathing room."
+   - Provide a concrete "nextAction": a tiny, low-friction first physical step (takes under 2 minutes) to get started without friction.
+
+OUTPUT STRICT VALID JSON ONLY (no preamble, no markdown formatting outside JSON):
 {
-  "overview": "Personalized 2-3 sentence explanation comparing trade-offs and recommending the exact starting sequence.",
+  "overview": "Supportive 2-3 sentence explanation of the situation and why this specific priority sequence was selected.",
+  "clarificationQuestion": "Optional short question or clearly stated assumption if any key urgency/timeline was ambiguous (or null if clear)",
   "firstFocus": {
-    "task": "Exact task name",
-    "estimatedMinutes": 15,
-    "reason": "Specific reasoning why this comes first",
-    "stressRelief": "Expected mental relief upon finishing this"
+    "task": "Exact task name recommended to do FIRST (do not just pick item #1)",
+    "estimatedMinutes": 20,
+    "reason": "Detailed, specific explanation of why this must come first over the other tasks",
+    "stressRelief": "How completing this lowers cognitive burden and frees working memory",
+    "nextAction": "A tiny 2-minute actionable first step to start right away"
   },
   "nextStep": {
-    "task": "Exact task name",
+    "task": "Exact task name to tackle immediately after the first focus",
     "estimatedMinutes": 25,
-    "reason": "Why this comes second"
+    "reason": "Why this comes second (e.g., builds directly on the first task or addresses subsequent urgency)"
   },
   "laterTasks": [
     {
       "task": "Task name",
       "estimatedMinutes": 30,
-      "reason": "Why this can safely wait"
+      "reason": "Why this can safely wait until the top focus blocks are cleared"
     }
   ],
   "quickWin": {
-    "task": "Task name",
+    "task": "Smallest low-friction task that can be knocked out quickly (or null if none)",
     "estimatedMinutes": 10,
-    "reason": "Why this provides quick momentum"
+    "reason": "Why this offers effortless momentum and dopamine"
   },
   "recoverySuggestion": {
     "title": "Short reset title",
-    "activity": "What to do for 2-5 minutes",
-    "durationMinutes": 3,
-    "navTarget": "breathing-reset | dump-bag | music-reset | null"
+    "activity": "2-3 minute restorative autonomic pause",
+    "durationMinutes": 2,
+    "navTarget": "breathing-reset"
   }
 }`
 }
@@ -963,33 +1042,71 @@ function parseAndValidatePriorityResponse(aiText, originalTasks) {
     if (!obj.overview || typeof obj.overview !== "string") return null
     if (!obj.firstFocus || !obj.firstFocus.task) return null
 
+    const firstTaskText = String(obj.firstFocus.task).trim()
+    const nextTaskText = obj.nextStep && obj.nextStep.task ? String(obj.nextStep.task).trim() : null
+    const quickWinText = obj.quickWin && obj.quickWin.task ? String(obj.quickWin.task).trim() : null
+
+    // Build unified sequence array for roadmap display
+    const sequence = []
+    sequence.push({
+      task: firstTaskText,
+      order: 1,
+      role: "First Focus",
+      estimatedMinutes: Number(obj.firstFocus.estimatedMinutes) || 15,
+      reason: String(obj.firstFocus.reason || "High leverage starting point.").trim(),
+      nextAction: obj.firstFocus.nextAction ? String(obj.firstFocus.nextAction).trim() : null,
+    })
+
+    if (nextTaskText && nextTaskText !== firstTaskText) {
+      sequence.push({
+        task: nextTaskText,
+        order: 2,
+        role: "Next Step",
+        estimatedMinutes: Number(obj.nextStep.estimatedMinutes) || 20,
+        reason: String(obj.nextStep.reason || "Builds on your momentum.").trim(),
+      })
+    }
+
+    const laterTasks = Array.isArray(obj.laterTasks)
+      ? obj.laterTasks
+          .map((t, idx) => ({
+            task: String(t.task || "").trim(),
+            order: 3 + idx,
+            role: "Later",
+            estimatedMinutes: Number(t.estimatedMinutes) || 25,
+            reason: String(t.reason || "Can wait until key tasks are cleared.").trim(),
+          }))
+          .filter((t) => t.task.length > 0 && t.task !== firstTaskText && t.task !== nextTaskText)
+      : []
+
+    laterTasks.forEach((lt) => sequence.push(lt))
+
     return {
       overview: String(obj.overview).trim(),
+      clarificationQuestion: obj.clarificationQuestion ? String(obj.clarificationQuestion).trim() : null,
       firstFocus: {
-        task: String(obj.firstFocus.task).trim(),
+        task: firstTaskText,
         estimatedMinutes: Number(obj.firstFocus.estimatedMinutes) || 15,
         reason: String(obj.firstFocus.reason || "Completing this first unblocks your focus.").trim(),
         stressRelief: String(obj.firstFocus.stressRelief || "Reduces immediate mental pressure and clears uncertainty.").trim(),
+        nextAction: obj.firstFocus.nextAction ? String(obj.firstFocus.nextAction).trim() : "Open your workspace and spend the first 2 minutes setting up your draft.",
       },
-      nextStep: obj.nextStep && obj.nextStep.task ? {
-        task: String(obj.nextStep.task).trim(),
+      nextStep: nextTaskText ? {
+        task: nextTaskText,
         estimatedMinutes: Number(obj.nextStep.estimatedMinutes) || 20,
         reason: String(obj.nextStep.reason || "Follows naturally once your first priority is off your plate.").trim(),
       } : null,
-      laterTasks: Array.isArray(obj.laterTasks) ? obj.laterTasks.map(t => ({
-        task: String(t.task || "").trim(),
-        estimatedMinutes: Number(t.estimatedMinutes) || 30,
-        reason: String(t.reason || "Can wait until higher leverage tasks are cleared.").trim(),
-      })).filter(t => t.task.length > 0) : [],
-      quickWin: obj.quickWin && obj.quickWin.task ? {
-        task: String(obj.quickWin.task).trim(),
+      laterTasks,
+      quickWin: quickWinText ? {
+        task: quickWinText,
         estimatedMinutes: Number(obj.quickWin.estimatedMinutes) || 10,
         reason: String(obj.quickWin.reason || "Gives a fast dopamine boost with low effort.").trim(),
       } : null,
+      sequence,
       recoverySuggestion: obj.recoverySuggestion ? {
         title: String(obj.recoverySuggestion.title || "Quick Mindful Pause").trim(),
         activity: String(obj.recoverySuggestion.activity || "Step away from your screen and take 3 deep reset breaths.").trim(),
-        durationMinutes: Number(obj.recoverySuggestion.durationMinutes) || 3,
+        durationMinutes: Number(obj.recoverySuggestion.durationMinutes) || 2,
         navTarget: obj.recoverySuggestion.navTarget || "breathing-reset",
       } : {
         title: "2-Minute Breathing Reset",
@@ -1004,15 +1121,23 @@ function parseAndValidatePriorityResponse(aiText, originalTasks) {
   }
 }
 
-function getSafePriorityPathFallback({ tasks, msi }) {
-  const cleanTasks = (tasks || []).map(t => t.trim()).filter(Boolean)
+/**
+ * Intelligent client & server fallback engine.
+ * Analyzes urgency, dependencies, cognitive load, and MSI without favoring the first item.
+ */
+function getSafePriorityPathFallback({ rawInput, tasks, msi }) {
+  const extracted = extractTasksFromRawInput(rawInput || tasks || [])
+  const cleanTasks = extracted.map((t) => t.trim()).filter(Boolean)
+
   if (cleanTasks.length === 0) {
     return {
-      overview: "No tasks entered yet. Add what is on your plate to map your priority path.",
+      overview: "No tasks entered yet. Share what is on your plate to map your personalized Priority Path.",
+      clarificationQuestion: null,
       firstFocus: null,
       nextStep: null,
       laterTasks: [],
       quickWin: null,
+      sequence: [],
       recoverySuggestion: {
         title: "Mindful Reset",
         activity: "Take a quiet moment to breathe and clear your thoughts.",
@@ -1023,86 +1148,135 @@ function getSafePriorityPathFallback({ tasks, msi }) {
   }
 
   const msiScore = msi != null ? Number(msi) : 50
-  
-  // Categorize tasks based on heuristics
+
+  // Deep Heuristic Scoring across tasks
   const analyzed = cleanTasks.map((text, idx) => {
     const l = text.toLowerCase()
-    let urgency = 0
-    let cognitive = 2 // 1: light, 2: medium, 3: heavy
+    let urgencyScore = 0
+    let cognitiveLoad = 2 // 1: light/admin, 2: medium, 3: heavy/strategic
     let isQuick = false
+    let dependencyWeight = 0
 
-    if (/\b(today|urgent|asap|now|critical|deadline|due|meeting|call)\b/.test(l)) urgency += 40
-    if (/\b(submit|finish|send|reply|review|check)\b/.test(l)) urgency += 20
-
-    if (/\b(reply|email|call|text|ping|check|quick|pay|bill)\b/.test(l)) {
-      cognitive = 1
-      isQuick = true
-    } else if (/\b(strategy|architecture|presentation|report|plan|deep|analysis|budget)\b/.test(l)) {
-      cognitive = 3
+    // Deadlines & urgency cues
+    if (/\b(today|urgent|asap|now|critical|deadline|due|meeting|call|by\s+\d+|am\b|pm\b)\b/.test(l)) {
+      urgencyScore += 50
+    }
+    if (/\b(client|submit|deliver|present|boss|manager|payroll|invoice|exam)\b/.test(l)) {
+      urgencyScore += 30
+    }
+    if (/\b(finish|send|reply|review|check|email|ping|approve)\b/.test(l)) {
+      urgencyScore += 15
     }
 
-    const estMinutes = isQuick ? 10 : cognitive === 3 ? 35 : 20
-    return { id: `task_${idx}`, text, urgency, cognitive, isQuick, estMinutes, originalIndex: idx }
+    // Cognitive load
+    if (/\b(reply|email|call|text|ping|check|quick|pay|bill|print|trash|dishes|groceries)\b/.test(l)) {
+      cognitiveLoad = 1
+      isQuick = true
+    } else if (/\b(strategy|architecture|presentation|deck|report|analysis|budget|write|draft|code|build)\b/.test(l)) {
+      cognitiveLoad = 3
+    }
+
+    // Dependency heuristic: e.g. "review docs before slides", "draft before submit", "analyze before meeting"
+    if (/\b(review|prep|draft|read|gather|outline)\b/.test(l)) {
+      dependencyWeight += 20
+    }
+
+    // Give a slight intentional negative bias to pure position so first item is never picked on index alone
+    const positionTieBreaker = (cleanTasks.length - idx) * 0.1
+
+    const totalPriorityScore = urgencyScore + dependencyWeight + (isQuick && msiScore >= 60 ? 30 : 0) + positionTieBreaker
+
+    const estMinutes = isQuick ? 10 : cognitiveLoad === 3 ? 35 : 20
+    return {
+      id: `task_${idx}`,
+      text,
+      urgencyScore,
+      cognitiveLoad,
+      isQuick,
+      dependencyWeight,
+      totalPriorityScore,
+      estMinutes,
+      originalIndex: idx,
+    }
   })
 
-  // Energy & MSI Matching Strategy:
-  // High MSI (>= 60): Start with quick wins or high-clarity communications to avoid paralysis
-  // Low/Moderate MSI (< 60): Start with highest urgency / impactful task
-  let firstIdx = 0
+  // Sort by priority score descending
+  const sorted = [...analyzed].sort((a, b) => b.totalPriorityScore - a.totalPriorityScore)
+
+  // Energy & MSI matching:
+  // If MSI >= 60 (high stress), prefer high-scoring quick win if available
+  let first = sorted[0]
   if (msiScore >= 60) {
-    // Look for quick win with moderate or high urgency
-    const quickUrgent = analyzed.findIndex(a => a.isQuick)
-    firstIdx = quickUrgent !== -1 ? quickUrgent : 0
-  } else {
-    // Sort by urgency descending
-    let highestUrgency = -1
-    analyzed.forEach((a, i) => {
-      if (a.urgency > highestUrgency) {
-        highestUrgency = a.urgency
-        firstIdx = i
-      }
-    })
+    const quickHigh = sorted.find((s) => s.isQuick && s.urgencyScore > 0) || sorted.find((s) => s.isQuick)
+    if (quickHigh) first = quickHigh
   }
 
-  const first = analyzed[firstIdx]
-  const remaining = analyzed.filter((_, i) => i !== firstIdx)
-  
-  // Quick win candidate from remaining
-  const quickCandidate = remaining.find(r => r.isQuick)
-  const nonQuickRemaining = remaining.filter(r => r !== quickCandidate)
-
+  const remaining = sorted.filter((s) => s.id !== first.id)
   const next = remaining.length > 0 ? remaining[0] : null
   const later = remaining.length > 1 ? remaining.slice(1) : []
+  const quickWinCandidate = sorted.find((s) => s.isQuick && s.id !== first.id) || (first.isQuick ? null : null)
 
   const overview = msiScore >= 60
-    ? `You have ${cleanTasks.length} pending items and elevated stress signals today. Starting with "${first.text}" gives you an early unblocking win and eases cognitive pressure before tackling deeper deliverables.`
-    : `You have ${cleanTasks.length} open responsibilities. Knocking out "${first.text}" first will unlock immediate momentum and remove the largest obstacle on your schedule.`
+    ? `You have ${cleanTasks.length} pending items and elevated stress signals today. We selected "${first.text}" as your primary anchor to eliminate immediate friction and rebuild momentum without cognitive burnout.`
+    : `Analyzing your ${cleanTasks.length} open responsibilities, tackling "${first.text}" first gives you the highest leverage, resolving the critical path and removing the largest blocker on your schedule.`
+
+  const firstFocus = {
+    task: first.text,
+    estimatedMinutes: first.estMinutes,
+    reason: first.isQuick
+      ? "Clears immediate uncertainty with minimal mental friction, unblocking your working memory."
+      : "Carries the most critical timeline impact and unblocks the remaining steps on your schedule.",
+    stressRelief: "Clears cognitive overload and gives you immediate agency over your day.",
+    nextAction: `Spend the first 2 minutes opening the relevant file or screen for "${first.text}" without worrying about finishing.`,
+  }
+
+  const nextStep = next ? {
+    task: next.text,
+    estimatedMinutes: next.estMinutes,
+    reason: "Builds directly on your momentum once your primary focus is complete.",
+  } : null
+
+  const laterTasks = later.map((l, idx) => ({
+    task: l.text,
+    order: 3 + idx,
+    role: "Later",
+    estimatedMinutes: l.estMinutes,
+    reason: "Can wait safely without penalty until your top focus blocks are cleared.",
+  }))
+
+  const sequence = [
+    {
+      task: first.text,
+      order: 1,
+      role: "First Focus",
+      estimatedMinutes: first.estMinutes,
+      reason: firstFocus.reason,
+      nextAction: firstFocus.nextAction,
+    },
+    ...(nextStep ? [{
+      task: nextStep.task,
+      order: 2,
+      role: "Next Step",
+      estimatedMinutes: nextStep.estimatedMinutes,
+      reason: nextStep.reason,
+    }] : []),
+    ...laterTasks,
+  ]
 
   return {
     overview,
-    firstFocus: {
-      task: first.text,
-      estimatedMinutes: first.estMinutes,
-      reason: first.isQuick
-        ? "Quick communication/action clears uncertainty and eliminates background anxiety with minimal friction."
-        : "Resolves immediate delivery pressure and unblocks subsequent steps on your agenda.",
-      stressRelief: "Clears working memory overload and gives you control over your timeline.",
-    },
-    nextStep: next ? {
-      task: next.text,
-      estimatedMinutes: next.estMinutes,
-      reason: "Builds directly on your momentum once your primary focus is complete.",
-    } : null,
-    laterTasks: later.map(l => ({
-      task: l.text,
-      estimatedMinutes: l.estMinutes,
-      reason: "Can be held without penalty until your top focus blocks are cleared.",
-    })),
-    quickWin: quickCandidate ? {
-      task: quickCandidate.text,
-      estimatedMinutes: quickCandidate.estMinutes,
+    clarificationQuestion: cleanTasks.length > 1 && sorted.every((s) => s.urgencyScore === 0)
+      ? "Assuming tasks have equal deadlines; adjust if any item is due sooner."
+      : null,
+    firstFocus,
+    nextStep,
+    laterTasks,
+    quickWin: quickWinCandidate ? {
+      task: quickWinCandidate.text,
+      estimatedMinutes: quickWinCandidate.estMinutes,
       reason: "A lightweight task you can knock out in 10 minutes for an effortless dopamine boost.",
     } : null,
+    sequence,
     recoverySuggestion: {
       title: msiScore >= 60 ? "3-Minute Down-Regulation" : "Cognitive Cleansing Pause",
       activity: msiScore >= 60
@@ -1114,10 +1288,12 @@ function getSafePriorityPathFallback({ tasks, msi }) {
   }
 }
 
-async function generatePriorityPathAnalysis({ tasks, msi, history, userContext }) {
-  const cleanTasks = (tasks || []).map(t => typeof t === "string" ? t.trim() : "").filter(Boolean)
+async function generatePriorityPathAnalysis({ rawInput, tasks, msi, history, userContext }) {
+  const extracted = extractTasksFromRawInput(rawInput || tasks || [])
+  const cleanTasks = extracted.map((t) => (typeof t === "string" ? t.trim() : "")).filter(Boolean)
+
   if (cleanTasks.length === 0) {
-    return getSafePriorityPathFallback({ tasks: [], msi })
+    return getSafePriorityPathFallback({ rawInput, tasks: [], msi })
   }
 
   const apiKey =
@@ -1127,12 +1303,12 @@ async function generatePriorityPathAnalysis({ tasks, msi, history, userContext }
     process.env.OPENAI_API_KEY
 
   if (!apiKey) {
-    console.log("[PRIORITY-AI] No AI API key configured. Using safe intelligent prioritization fallback.")
-    return getSafePriorityPathFallback({ tasks: cleanTasks, msi })
+    console.log("[PRIORITY-AI] No AI API key configured. Using intelligent multi-factor fallback.")
+    return getSafePriorityPathFallback({ rawInput, tasks: cleanTasks, msi })
   }
 
   try {
-    const prompt = buildPriorityPrompt({ tasks: cleanTasks, msi, history, userContext })
+    const prompt = buildPriorityPrompt({ rawInput, tasks: cleanTasks, msi, history, userContext })
     let aiJsonText = ""
 
     if (
@@ -1147,17 +1323,18 @@ async function generatePriorityPathAnalysis({ tasks, msi, history, userContext }
 
     const parsed = parseAndValidatePriorityResponse(aiJsonText, cleanTasks)
     if (parsed) {
-      console.log("[PRIORITY-AI] Successfully generated AI Priority Path.")
+      console.log("[PRIORITY-AI] Successfully generated deep AI Priority Path.")
       return parsed
     }
 
-    console.warn("[PRIORITY-AI] Validation failed. Using safe intelligent prioritization fallback.")
-    return getSafePriorityPathFallback({ tasks: cleanTasks, msi })
+    console.warn("[PRIORITY-AI] Validation failed. Using intelligent multi-factor fallback.")
+    return getSafePriorityPathFallback({ rawInput, tasks: cleanTasks, msi })
   } catch (err) {
     console.error("[PRIORITY-AI] AI provider call error:", err.message)
-    return getSafePriorityPathFallback({ tasks: cleanTasks, msi })
+    return getSafePriorityPathFallback({ rawInput, tasks: cleanTasks, msi })
   }
 }
+
 
 module.exports = {
   generateAnalysisAndRecommendations,
