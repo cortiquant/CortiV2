@@ -89,7 +89,7 @@ router.post("/:id/connect", async (req, res) => {
       })
     }
 
-    const prefilledMessage = "Hello, I would like to connect regarding professional support."
+    const prefilledMessage = "Hello Dr. Uvesh, I have been recommended to you by Cortoe for a complimentary professional consultation. I would like to connect with you and know more about the consultation process. Thank you."
     const encodedMessage = encodeURIComponent(prefilledMessage)
     const connectUrl = `https://wa.me/${normalizedPhone}?text=${encodedMessage}`
 
@@ -207,7 +207,7 @@ adminRouter.post("/", requireAdmin, async (req, res) => {
       entityType: "Professional",
       entityId: newProfessional._id,
       details: `Created professional ${newProfessional.professionalName} (${newProfessional.occupation})`,
-    }).catch(() => {})
+    }).catch(() => { })
 
     return res.status(201).json({
       success: true,
@@ -319,7 +319,7 @@ adminRouter.put("/:id", requireAdmin, async (req, res) => {
       entityType: "Professional",
       entityId: professional._id,
       details: `Updated professional details for ${professional.professionalName}`,
-    }).catch(() => {})
+    }).catch(() => { })
 
     return res.status(200).json({
       success: true,
@@ -399,7 +399,7 @@ adminRouter.delete("/:id", requireAdmin, async (req, res) => {
       entityType: "Professional",
       entityId: professional._id,
       details: `Deleted professional ${professional.professionalName} (${professional.occupation})`,
-    }).catch(() => {})
+    }).catch(() => { })
 
     return res.status(200).json({
       success: true,
