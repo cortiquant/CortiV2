@@ -9,10 +9,11 @@ const { sendEmployeeApprovalNotification, sendEmployeeApprovalStatusEmail } = re
 const { normalizeDepartmentName } = require("../services/departmentService")
 const { signToken, requireAuth, requireHR } = require("../middleware/auth")
 
-// ── Utility: generate an employeeId like "EMP-1001" ──────────────────────────
-async function generateEmployeeId() {
-  const count = await User.countDocuments({ role: "employee", employeeId: { $ne: null } })
-  return `EMP-${String(1000 + count + 1).padStart(4, "0")}`
+const { generateOrgEmployeeId } = require("../services/employeeIdService")
+
+// ── Utility: generate organisation-specific employeeId ──────────────────────────
+async function generateEmployeeId(organisationId) {
+  return await generateOrgEmployeeId(organisationId)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -227,7 +228,12 @@ router.post("/employee/signup", async (req, res) => {
     // ── Hash password and create user ─────────────────────────────────────
     const passwordHash = await User.hashPassword(password)
     const now = new Date()
-    const initialStatus = status === "PendingApproval" || status === "Pending" ? "PendingApproval" : "OnboardingRequired"
+    const initialStatus = status === "PendingApproval" || status === "Pending" ? "PendingApproval" : status === "Approved" || status === "Active" ? "Active" : "OnboardingRequired"
+
+    let initialEmployeeId = undefined
+    if (initialStatus === "Active" || initialStatus === "Approved") {
+      initialEmployeeId = await generateEmployeeId(org._id)
+    }
 
     const user = await User.create({
       name: name.trim(),
@@ -236,6 +242,8 @@ router.post("/employee/signup", async (req, res) => {
       passwordHash,
       role: "employee",
       status: initialStatus,
+      employeeId: initialEmployeeId,
+      approvedAt: initialEmployeeId ? now : null,
       organisationId: org._id,
       organisationCode: org.organisationCode || org.code,
       privacyConsent: true,
@@ -244,7 +252,7 @@ router.post("/employee/signup", async (req, res) => {
       participantConsentAt: now,
     })
 
-    console.log(`[AUTH] Employee signup: ${user.username} → org ${user.organisationCode} (${initialStatus})`)
+    console.log(`[AUTH] Employee signup: ${user.username} → org ${user.organisationCode} (${initialStatus}, ID: ${initialEmployeeId || "Pending"})`)
 
     // If account was created with PendingApproval status, notify HR immediately
     if (initialStatus === "PendingApproval") {
@@ -946,15 +954,22 @@ async function handleApproveEmployee(req, res) {
       return res.status(403).json({ success: false, message: "Access denied: cross-organisation action." })
     }
 
-    if (employee.status === "Approved" || employee.status === "Active") {
-      return res.status(400).json({ success: false, message: "Employee is already approved." })
+    const hasValidId = employee.employeeId && employee.employeeId !== "Pending ID" && employee.employeeId !== "pending"
+
+    // If employee is already approved/active AND already has a valid ID, reject duplicate approval
+    if ((employee.status === "Approved" || employee.status === "Active") && hasValidId) {
+      return res.status(400).json({ success: false, message: "Employee is already approved with ID " + employee.employeeId })
     }
 
-    const employeeId = employee.employeeId || (await generateEmployeeId())
+    const employeeId = hasValidId ? employee.employeeId : await generateEmployeeId(employee.organisationId)
     employee.status = "Active"
     employee.employeeId = employeeId
-    employee.approvedAt = new Date()
-    employee.approvedBy = req.user._id
+    if (!employee.approvedAt) {
+      employee.approvedAt = new Date()
+    }
+    if (!employee.approvedBy) {
+      employee.approvedBy = req.user._id
+    }
     employee.rejectedAt = null
     employee.rejectedBy = null
     employee.rejectionReason = null
@@ -1081,6 +1096,24 @@ async function handleGetHREmployees(req, res) {
     }
 
     const employees = await User.find(baseOrgFilter).sort({ createdAt: -1 })
+
+    // Auto-cure any Active/Approved employees who are missing an employeeId
+    for (const emp of employees) {
+      const isApprovedOrActive = emp.status === "Approved" || emp.status === "Active"
+      const lacksId = !emp.employeeId || emp.employeeId === "Pending ID" || emp.employeeId === "pending"
+      if (isApprovedOrActive && lacksId) {
+        try {
+          const generatedId = await generateEmployeeId(emp.organisationId)
+          emp.employeeId = generatedId
+          if (!emp.approvedAt) emp.approvedAt = emp.createdAt || new Date()
+          await emp.save()
+          console.log(`[HR EMPLOYEES] Auto-assigned missing employeeId for ${emp.name}: ${generatedId}`)
+        } catch (genErr) {
+          console.error(`[HR EMPLOYEES] Error auto-generating employeeId for ${emp._id}:`, genErr.message)
+        }
+      }
+    }
+
     const userIds = employees.map((e) => e._id)
 
     // Corporate onboarding records

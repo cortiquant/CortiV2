@@ -41,6 +41,14 @@ const organisationSchema = new mongoose.Schema(
       default: "Active",
     },
 
+    // Custom employee ID prefix (e.g. "EMP", "FLYA"). Defaults to uppercase prefix.
+    employeeIdPrefix: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: null,
+    },
+
     // Boolean flag kept for backward compatibility
     isActive: {
       type: Boolean,

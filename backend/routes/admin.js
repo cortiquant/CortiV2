@@ -175,11 +175,15 @@ router.post("/organisations", requireAdmin, async (req, res) => {
       session = null
     }
 
+    const { resolveOrgPrefix } = require("../services/employeeIdService")
+    const customPrefix = (req.body.employeeIdPrefix || "").trim().toUpperCase() || null
+
     // Create organisation doc (HR is not active yet, hrAdminId is null)
     const orgDoc = new Organisation({
       organisationId,
       name: trimmedName,
       organisationCode,
+      employeeIdPrefix: customPrefix || resolveOrgPrefix({ name: trimmedName, organisationCode }),
       status: "Active",
       isActive: true,
       hrAdminId: null,
@@ -947,6 +951,24 @@ router.get("/employees", requireAdmin, async (req, res) => {
     })
       .select("-passwordHash")
       .sort({ createdAt: -1 })
+
+    // Auto-cure any Active/Approved employees who are missing an employeeId
+    const { generateOrgEmployeeId } = require("../services/employeeIdService")
+    for (const emp of employees) {
+      const isApprovedOrActive = emp.status === "Approved" || emp.status === "Active"
+      const lacksId = !emp.employeeId || emp.employeeId === "Pending ID" || emp.employeeId === "pending"
+      if (isApprovedOrActive && lacksId) {
+        try {
+          const generatedId = await generateOrgEmployeeId(emp.organisationId)
+          emp.employeeId = generatedId
+          if (!emp.approvedAt) emp.approvedAt = emp.createdAt || new Date()
+          await emp.save()
+          console.log(`[ADMIN EMPLOYEES] Auto-assigned missing employeeId for ${emp.name}: ${generatedId}`)
+        } catch (genErr) {
+          console.error(`[ADMIN EMPLOYEES] Error auto-generating employeeId for ${emp._id}:`, genErr.message)
+        }
+      }
+    }
 
     // 2. Fetch all organisations to map names and codes
     const orgs = await Organisation.find({})
