@@ -107,8 +107,8 @@ export default function ParticipantConsentScreen() {
             </h2>
             <p className="text-sm text-text-secondary leading-relaxed">
               You may withdraw your participation at any time. Withdrawal will not affect your employment or standing with your organization. To withdraw or request deletion of your data, contact us at:{" "}
-              <a href="mailto:contact@cortiquant.com" className="text-lavender-bright underline underline-offset-2">
-                contact@cortiquant.com
+              <a href="mailto:cortiqsupport@gmail.com" className="text-lavender-bright underline underline-offset-2">
+                cortiqsupport@gmail.com
               </a>
             </p>
           </section>

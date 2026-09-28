@@ -1,6 +1,16 @@
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
 import UpcomingSessionCard, { UpcomingSessionData } from "@/components/UpcomingSessionCard"
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  Cell,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ReferenceLine,
+} from "recharts"
 import { getMSIBand, getMSICategory, MSI_BANDS, MSIBandLabel } from "@/utils/msiClassification"
 import BaselineMSI from "./BaselineMSI"
 import StressDriverFlow from "./StressDriverFlow"
@@ -415,7 +425,7 @@ function HomeScreen({ onNav }: { onNav: (s: Screen) => void }) {
       .catch(() => {})
   }, [])
 
-  useEffect(() => {
+  const fetchDashboardData = useCallback(() => {
     const token = localStorage.getItem("cq_token")
     if (!token) return
 
@@ -442,6 +452,12 @@ function HomeScreen({ onNav }: { onNav: (s: Screen) => void }) {
           if (metricsData.data.baselineMsi != null) {
             localStorage.setItem("cq_baseline_msi", String(metricsData.data.baselineMsi))
           }
+          if (metricsData.data.lastBaselineMsiDate) {
+            localStorage.setItem("cq_last_baseline_date", metricsData.data.lastBaselineMsiDate)
+          }
+          if (metricsData.data.nextBaselineMsiDate) {
+            localStorage.setItem("cq_next_baseline_date", metricsData.data.nextBaselineMsiDate)
+          }
         }
         if (rootCauseData.success && rootCauseData.data) {
           setLatestRootCause(rootCauseData.data)
@@ -454,31 +470,59 @@ function HomeScreen({ onNav }: { onNav: (s: Screen) => void }) {
       })
       .catch((err) => console.warn("[DASHBOARD] Fetch error:", err))
       .finally(() => setLoading(false))
+  }, [fetchRecommendations, fetchNotifications])
+
+  useEffect(() => {
+    fetchDashboardData()
 
     // Listen for recommendations update event (dispatched right after root-cause completion)
     const handleRecsUpdated = () => {
       fetchRecommendations()
     }
+    // Listen for baseline update event (dispatched right after baseline completion/update)
+    const handleBaselineUpdated = (e: any) => {
+      if (e?.detail?.baselineMsi != null) {
+        localStorage.setItem("cq_baseline_msi", String(e.detail.baselineMsi))
+      }
+      fetchDashboardData()
+    }
+
     window.addEventListener("cq_recommendations_updated", handleRecsUpdated)
+    window.addEventListener("cq_baseline_updated", handleBaselineUpdated)
     const notifInterval = setInterval(fetchNotifications, 15000)
     return () => {
       window.removeEventListener("cq_recommendations_updated", handleRecsUpdated)
+      window.removeEventListener("cq_baseline_updated", handleBaselineUpdated)
       clearInterval(notifInterval)
     }
-  }, [fetchRecommendations, fetchNotifications])
+  }, [fetchDashboardData, fetchRecommendations, fetchNotifications])
 
   const empName = employeeProfile?.name || localStorage.getItem("cq_user_name") || "Employee"
   const firstName = empName.split(" ")[0]
 
-  const baselineMsi = assessmentMetrics?.baselineMsi ?? (localStorage.getItem("cq_baseline_msi") ? parseInt(localStorage.getItem("cq_baseline_msi")!, 10) : null)
+  // Source of truth: Unified MSI Array
+  const msiArray: Array<{ score: number; type: "baseline" | "weekly"; recordedAt: string }> =
+    Array.isArray(assessmentMetrics?.msi) && assessmentMetrics.msi.length > 0
+      ? assessmentMetrics.msi
+      : []
+
+  const latestMsiItem = msiArray.length > 0 ? msiArray[msiArray.length - 1] : null
+  const baselineItem = msiArray.find((item) => item.type === "baseline")
+
+  const baselineMsi = baselineItem
+    ? baselineItem.score
+    : assessmentMetrics?.baselineMsi ?? (localStorage.getItem("cq_baseline_msi") ? parseInt(localStorage.getItem("cq_baseline_msi")!, 10) : null)
   const hasBaseline = baselineMsi != null
 
-  const currentMsi = assessmentMetrics?.currentMsi ?? null
+  const currentMsi = latestMsiItem
+    ? latestMsiItem.score
+    : (assessmentMetrics?.currentMsi ?? baselineMsi)
+
   const msiForDisplay = currentMsi ?? baselineMsi ?? 50
   const band = getBand(msiForDisplay)
   const baselineBand = baselineMsi != null ? getBand(baselineMsi) : band
 
-  // Stress category styling and caring human assurance messaging for MSI card
+  // Stress category styling and caring human assurance messaging for circular MSI card
   const displayScore = currentMsi ?? baselineMsi ?? 0
   const activeStressCat = getMsiStressCategory(displayScore)
 
@@ -1050,7 +1094,11 @@ function ResultScreen({ onNav, data }: { onNav: (s: Screen) => void; data: Check
     }
   }, [data])
 
-  const categoryColor = msi >= 65 ? "text-c-warning" : msi >= 45 ? "text-lavender-soft" : "text-c-success"
+  const baselineRaw = localStorage.getItem("cq_baseline_msi")
+  const baselineMsi = baselineRaw ? parseInt(baselineRaw, 10) : null
+  const diffFromBaseline = baselineMsi != null ? msi - baselineMsi : null
+  const diffSign = diffFromBaseline != null && diffFromBaseline >= 0 ? "↑" : "↓"
+  const categoryColor = getMSIBand(msi).color
 
   return (
     <Shell>
@@ -1066,7 +1114,13 @@ function ResultScreen({ onNav, data }: { onNav: (s: Screen) => void; data: Check
         <p className="text-[10px] text-text-muted mb-3">Your stress snapshot</p>
         <p className="font-mono-data text-7xl font-semibold text-warm-white leading-none mb-2">{msi}</p>
         <p className={`text-lg font-bold ${categoryColor} mb-1`}>{category}</p>
-        <p className="text-sm text-text-muted">↑ {msi - 43} points from your baseline of 43</p>
+        {baselineMsi != null ? (
+          <p className="text-sm text-text-muted">
+            {diffSign} {Math.abs(diffFromBaseline!)} points from your baseline of {baselineMsi}
+          </p>
+        ) : (
+          <p className="text-sm text-text-muted">Baseline not yet established</p>
+        )}
       </div>
 
       {/* Stress drivers */}
@@ -1697,8 +1751,152 @@ function ActiveResetScreen({ onNav }: { onNav: (s: Screen) => void }) {
 
 // ── My Stress ──────────────────────────────────────────────────────────────────
 
+export interface AggregatedMSIPoint {
+  label: string
+  fullLabel?: string
+  value: number
+  date: string
+  rawCount?: number
+  isAggregated?: boolean
+}
+
+// ── Aggregation Utility for Trends Chart ──────────────────────────────────────
+export function aggregateMSIHistory(
+  msiHistory: Array<{ score?: number; msi?: number; recordedAt?: string; date?: string; type?: string }>,
+  range: "7d" | "30d" | "3m" | "1y"
+): AggregatedMSIPoint[] {
+  if (!Array.isArray(msiHistory) || msiHistory.length === 0) return []
+
+  // Exclude baseline from trend points; keep only valid records with numbers
+  const weeklyRecords = msiHistory
+    .filter((item) => item && item.type !== "baseline" && typeof (item.score ?? item.msi) === "number")
+    .map((item) => {
+      const v = Number(item.score ?? item.msi)
+      const recorded = item.recordedAt ? new Date(item.recordedAt) : item.date ? new Date(item.date) : new Date()
+      return {
+        score: v,
+        timestamp: !isNaN(recorded.getTime()) ? recorded.getTime() : Date.now(),
+        dateObj: !isNaN(recorded.getTime()) ? recorded : new Date(),
+      }
+    })
+    .sort((a, b) => a.timestamp - b.timestamp)
+
+  if (weeklyRecords.length === 0) return []
+
+  // 1. "7d": Actual weekly MSI values without averaging
+  if (range === "7d") {
+    return weeklyRecords.map((r) => {
+      const label = r.dateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+      const fullLabel = r.dateObj.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+      return {
+        label,
+        fullLabel,
+        value: r.score,
+        date: r.dateObj.toISOString().split("T")[0],
+        isAggregated: false,
+      }
+    })
+  }
+
+  // 2. "30d": Aggregate into weekly periods (e.g. Week 1, Week 2, Week 3, Week 4)
+  if (range === "30d") {
+    // Group weekly updates chronologically into 7-day buckets starting from the first item
+    const firstTime = weeklyRecords[0].timestamp
+    const weekMap = new Map<number, { scores: number[]; minDate: Date; maxDate: Date }>()
+
+    weeklyRecords.forEach((r) => {
+      const diffDays = Math.floor((r.timestamp - firstTime) / (7 * 24 * 60 * 60 * 1000))
+      const weekIndex = Math.max(0, diffDays)
+      if (!weekMap.has(weekIndex)) {
+        weekMap.set(weekIndex, { scores: [], minDate: r.dateObj, maxDate: r.dateObj })
+      }
+      const bucket = weekMap.get(weekIndex)!
+      bucket.scores.push(r.score)
+      if (r.timestamp < bucket.minDate.getTime()) bucket.minDate = r.dateObj
+      if (r.timestamp > bucket.maxDate.getTime()) bucket.maxDate = r.dateObj
+    })
+
+    const sortedWeeks = Array.from(weekMap.entries()).sort((a, b) => a[0] - b[0])
+    return sortedWeeks.map(([wIdx, data], displayIdx) => {
+      const sum = data.scores.reduce((acc, s) => acc + s, 0)
+      const avg = Math.round((sum / data.scores.length) * 100) / 100
+      const weekNumber = displayIdx + 1
+      const dateRangeStr = `${data.minDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+      return {
+        label: `Wk ${weekNumber}`,
+        fullLabel: `Week ${weekNumber} (${dateRangeStr})`,
+        value: avg,
+        date: data.minDate.toISOString().split("T")[0],
+        rawCount: data.scores.length,
+        isAggregated: true,
+      }
+    })
+  }
+
+  // 3. "3m" and "1y": Aggregate by calendar month
+  // Group all records by Year-Month key "YYYY-MM"
+  const monthMap = new Map<string, { scores: number[]; dateObj: Date }>()
+  weeklyRecords.forEach((r) => {
+    const year = r.dateObj.getFullYear()
+    const month = String(r.dateObj.getMonth() + 1).padStart(2, "0")
+    const key = `${year}-${month}`
+    if (!monthMap.has(key)) {
+      monthMap.set(key, { scores: [], dateObj: new Date(year, r.dateObj.getMonth(), 1) })
+    }
+    monthMap.get(key)!.scores.push(r.score)
+  })
+
+  const sortedMonths = Array.from(monthMap.entries()).sort((a, b) => a[0].localeCompare(b[0]))
+  return sortedMonths.map(([key, data]) => {
+    const sum = data.scores.reduce((acc, s) => acc + s, 0)
+    const avg = Math.round((sum / data.scores.length) * 100) / 100
+    const shortLabel = data.dateObj.toLocaleDateString("en-US", { month: "short" })
+    const fullMonthName = data.dateObj.toLocaleDateString("en-US", { month: "long" })
+    const year = data.dateObj.getFullYear()
+
+    return {
+      label: shortLabel,
+      fullLabel: `${fullMonthName} ${year}`,
+      value: avg,
+      date: `${key}-01`,
+      rawCount: data.scores.length,
+      isAggregated: true,
+    }
+  })
+}
+
+// ── Native Recharts Tooltip for Trends Bar Chart ──────────────────────────────
+function MSITrendsTooltip({ active, payload, isAggregated, rangeLabel }: any) {
+  if (!active || !payload || !payload.length) return null
+  const item = payload[0]?.payload as AggregatedMSIPoint | undefined
+  if (!item) return null
+
+  const isElevated = item.value > 40
+  const isAvg = item.isAggregated ?? isAggregated
+
+  return (
+    <div className="bg-[#181528] border border-purple-core/30 rounded-xl px-3.5 py-2.5 shadow-2xl backdrop-blur-md">
+      <p className="text-[11px] text-text-muted font-medium mb-1">
+        {item.fullLabel || item.label}
+      </p>
+      <div className="flex items-center gap-2">
+        <div className={`w-2 h-2 rounded-full ${isElevated ? "bg-c-warning" : "bg-purple-400"}`} />
+        <span className="font-mono-data text-sm font-bold text-warm-white">
+          {isAvg ? "Average MSI: " : "MSI: "}
+          <span className={isElevated ? "text-c-warning" : "text-purple-300"}>{item.value}</span>
+        </span>
+      </div>
+      {isElevated && (
+        <span className="inline-block mt-1 text-[9px] uppercase font-semibold tracking-wider text-c-warning">
+          Elevated (&gt;40)
+        </span>
+      )}
+    </div>
+  )
+}
+
 function MyStressScreen({ onNav }: { onNav: (s: Screen) => void }) {
-  const [period, setPeriod] = useState<"7D" | "30D" | "90D">("7D")
+  const [period, setPeriod] = useState<"7D" | "30D" | "3M" | "1Y">("7D")
   const [historyData, setHistoryData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -1736,46 +1934,108 @@ function MyStressScreen({ onNav }: { onNav: (s: Screen) => void }) {
     fetchHistory(period)
   }, [period, fetchHistory])
 
-  // Process data from backend
-  const baseline = historyData?.baselineMsi ?? (localStorage.getItem("cq_baseline_msi") ? parseInt(localStorage.getItem("cq_baseline_msi")!, 10) : null)
-  const currentMsi = historyData?.currentMsi ?? (localStorage.getItem("cq_current_msi") ? parseInt(localStorage.getItem("cq_current_msi")!, 10) : null)
-  const usualRange = historyData?.usualRange || "Not enough data"
-  const observations: string[] = historyData?.observations || [
-    "Complete a few more check-ins to build a clearer picture of your stress patterns.",
-  ]
+  // Raw array from history API
+  const rawList: Array<{
+    date?: string
+    msi?: number
+    score?: number
+    type?: string
+    timestamp?: string
+    recordedAt?: string
+    category?: string
+  }> = historyData?.history || historyData?.assessments || []
 
-  const assessments: Array<{ date: string; msi: number; timestamp?: string }> = historyData?.assessments || []
+  // Baseline is the initial assessment: found separately and NOT included in averages
+  const baselineItem = rawList.find((item) => item.type === "baseline")
+  const baseline =
+    baselineItem?.score ??
+    historyData?.baseline?.score ??
+    historyData?.baselineMsi ??
+    (localStorage.getItem("cq_baseline_msi") ? parseInt(localStorage.getItem("cq_baseline_msi")!, 10) : null)
 
-  // Format Chart Data based on selected period
-  const numDays = period === "7D" ? 7 : period === "30D" ? 30 : 90
-  const chartPoints: Array<{ label: string; msi: number | null; dateStr: string }> = []
+  // Current MSI: MUST always be the latest valid MSI value across the entire MSI history, regardless of selected range filter
+  const allValidScores = rawList
+    .filter((item) => item && (item.score != null || item.msi != null))
+    .sort((a, b) => {
+      const ta = new Date(a.recordedAt || a.timestamp || a.date || 0).getTime()
+      const tb = new Date(b.recordedAt || b.timestamp || b.date || 0).getTime()
+      return ta - tb
+    })
+  const latestItem = allValidScores.length > 0 ? allValidScores[allValidScores.length - 1] : null
+  const currentMsi =
+    historyData?.latest ??
+    historyData?.currentMsi ??
+    latestItem?.score ??
+    latestItem?.msi ??
+    (localStorage.getItem("cq_current_msi") ? parseInt(localStorage.getItem("cq_current_msi")!, 10) : null)
 
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
+  // Aggregated dataset based strictly on the selected range filter
+  const rangeParam = period.toLowerCase() as "7d" | "30d" | "3m" | "1y"
+  const aggregatedPoints = useMemo(() => {
+    return aggregateMSIHistory(rawList, rangeParam)
+  }, [rawList, rangeParam])
 
-  for (let i = numDays - 1; i >= 0; i--) {
-    const d = new Date(today)
-    d.setDate(d.getDate() - i)
-    const dIso = d.toISOString().split("T")[0]
-    const matched = assessments.find((a) => a.date === dIso)
+  // Calculate usual range strictly from weekly historical values (excluding baseline)
+  const usualRange = useMemo(() => {
+    if (historyData?.usualRange && historyData.usualRange !== "Not enough data") {
+      return historyData.usualRange
+    }
+    const weeklyPoints = rawList.filter((item) => item.type !== "baseline" && typeof (item.score ?? item.msi) === "number")
+    if (weeklyPoints.length < 3) return "Not enough data"
+    const vals = weeklyPoints.map((p) => Number(p.score ?? p.msi)).sort((a, b) => a - b)
+    const q1 = vals[Math.floor(vals.length * 0.25)]
+    const q3 = vals[Math.floor(vals.length * 0.75)]
+    return `${q1}–${q3}`
+  }, [historyData, rawList])
 
-    let label = ""
-    if (period === "7D") {
-      label = d.toLocaleDateString("en-US", { weekday: "short" })
-    } else if (period === "30D") {
-      // Label every 5th or 6th day or first/last
-      label = i % 5 === 0 || i === numDays - 1 ? d.toLocaleDateString("en-US", { month: "numeric", day: "numeric" }) : ""
-    } else {
-      // 90D: label every ~15 days
-      label = i % 15 === 0 || i === numDays - 1 ? d.toLocaleDateString("en-US", { month: "short" }) : ""
+  // Trend insights based strictly on the SAME aggregated dataset currently displayed
+  const dynamicObservations = useMemo(() => {
+    if (aggregatedPoints.length < 2) {
+      return ["Complete a few more check-ins to build a clearer picture of your stress patterns."]
     }
 
-    chartPoints.push({
-      label,
-      msi: matched ? matched.msi : null,
-      dateStr: dIso,
-    })
-  }
+    const obs: string[] = []
+    const isMonthly = period === "3M" || period === "1Y"
+    const periodNoun = isMonthly ? "monthly averages" : period === "30D" ? "weekly averages" : "check-ins"
+
+    // 1. Trend across recent points
+    const len = aggregatedPoints.length
+    if (len >= 3) {
+      const p1 = aggregatedPoints[len - 1].value
+      const p2 = aggregatedPoints[len - 2].value
+      const p3 = aggregatedPoints[len - 3].value
+      if (p1 > p2 && p2 > p3) {
+        obs.push(`MSI has increased across the most recent ${periodNoun}.`)
+      } else if (p1 < p2 && p2 < p3) {
+        obs.push(`MSI has steadily decreased across the most recent ${periodNoun}.`)
+      }
+    }
+
+    // 2. Comparison to baseline
+    if (baseline != null && currentMsi != null) {
+      if (currentMsi > baseline + 10) {
+        obs.push("Recent MSI averages are running noticeably higher than your baseline.")
+      } else if (currentMsi < baseline - 10) {
+        obs.push("Recent MSI averages are below your baseline.")
+      } else {
+        obs.push("Your MSI is currently tracking close to your established baseline.")
+      }
+    }
+
+    // 3. Elevated frequency in this aggregated period
+    const elevatedCount = aggregatedPoints.filter((p) => p.value > 40).length
+    if (elevatedCount >= 2) {
+      obs.push(`Elevated stress levels have appeared in ${elevatedCount} of your recent periods.`)
+    } else if (elevatedCount === 0 && aggregatedPoints.length >= 2) {
+      obs.push("Your stress levels have remained smoothly within range throughout this period.")
+    }
+
+    if (obs.length === 0) {
+      obs.push("Your MSI has remained relatively stable across the selected timeframe.")
+    }
+
+    return obs.slice(0, 3)
+  }, [aggregatedPoints, baseline, currentMsi, period])
 
   // Check if current MSI is elevated (>40)
   const isElevated = currentMsi != null && currentMsi > 40
@@ -1783,13 +2043,13 @@ function MyStressScreen({ onNav }: { onNav: (s: Screen) => void }) {
 
   function handleMeaningClick() {
     if (isElevated) {
-      // Open root-cause discovery flow
       onNav("stress-cause")
     } else {
-      // Open MSI Meaning detailed explanation
       onNav("msi-meaning")
     }
   }
+
+  const isAggregatedPeriod = period === "30D" || period === "3M" || period === "1Y"
 
   return (
     <Shell>
@@ -1802,9 +2062,18 @@ function MyStressScreen({ onNav }: { onNav: (s: Screen) => void }) {
       {/* MSI over time chart card */}
       <div className="card-base p-5 mb-4">
         <div className="flex items-center justify-between mb-5">
-          <p className="text-[10px] text-text-muted">MSI over time</p>
+          <div>
+            <p className="text-[10px] text-text-muted font-medium">MSI over time</p>
+            <p className="text-[10px] text-text-muted/70 mt-0.5">
+              {period === "7D"
+                ? "Actual weekly check-in scores"
+                : period === "30D"
+                ? "Weekly average MSI"
+                : "Monthly average MSI"}
+            </p>
+          </div>
           <div className="flex gap-1">
-            {(["7D", "30D", "90D"] as const).map((t) => (
+            {(["7D", "30D", "3M", "1Y"] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setPeriod(t)}
@@ -1819,71 +2088,79 @@ function MyStressScreen({ onNav }: { onNav: (s: Screen) => void }) {
         </div>
 
         {loading && !historyData ? (
-          <div className="h-32 flex flex-col items-center justify-center text-xs text-text-muted animate-pulse">
+          <div className="h-44 flex flex-col items-center justify-center text-xs text-text-muted animate-pulse">
             <span className="mb-1">Loading your stress history…</span>
           </div>
         ) : error ? (
-          <div className="h-32 flex flex-col items-center justify-center text-xs text-rose-400">
+          <div className="h-44 flex flex-col items-center justify-center text-xs text-rose-400">
             <span>{error}</span>
           </div>
-        ) : assessments.length === 0 ? (
-          <div className="h-32 flex flex-col items-center justify-center text-xs text-text-muted text-center px-4">
+        ) : aggregatedPoints.length === 0 ? (
+          <div className="h-44 flex flex-col items-center justify-center text-xs text-text-muted text-center px-4">
             <span className="font-medium text-warm-white mb-1">No completed check-ins in this period.</span>
-            <span>Check in daily to build your personalized stress graph.</span>
+            <span>Weekly check-ins will automatically populate your MSI trend graph.</span>
           </div>
         ) : (
           <>
-            <div className="flex items-end gap-1.5 h-28 mb-3">
-              {chartPoints.map((pt, i) => {
-                const hasValue = pt.msi !== null
-                const v = pt.msi ?? 0
-                const isPtElevated = v > 40
-
-                return (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-1 min-w-0">
-                    <div className="w-full relative" style={{ height: "80px" }}>
-                      {hasValue ? (
-                        <div
-                          title={`${pt.dateStr}: ${v}% MSI`}
-                          className={`w-full absolute bottom-0 rounded-t transition-all ${
-                            isPtElevated ? "bg-c-warning/80" : "bg-purple-core/60"
-                          }`}
-                          style={{ height: `${Math.max(6, (v / 100) * 80)}px` }}
+            <div className="w-full h-44 mb-2">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={aggregatedPoints} margin={{ top: 12, right: 8, left: -24, bottom: 4 }}>
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fill: "#A8A1B5", fontSize: 10, fontFamily: "JetBrains Mono" }}
+                    axisLine={false}
+                    tickLine={false}
+                    interval={0}
+                  />
+                  <YAxis
+                    domain={[0, 100]}
+                    tick={{ fill: "#A8A1B5", fontSize: 10, fontFamily: "JetBrains Mono" }}
+                    axisLine={false}
+                    tickLine={false}
+                    ticks={[0, 20, 40, 60, 80, 100]}
+                  />
+                  <Tooltip
+                    content={<MSITrendsTooltip isAggregated={isAggregatedPeriod} rangeLabel={period} />}
+                    cursor={{ fill: "rgba(155, 93, 229, 0.08)", radius: 6 }}
+                  />
+                  {baseline != null && (
+                    <ReferenceLine
+                      y={baseline}
+                      stroke="#A78BFA"
+                      strokeDasharray="4 4"
+                      strokeWidth={1.5}
+                      strokeOpacity={0.7}
+                    />
+                  )}
+                  <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={38}>
+                    {aggregatedPoints.map((entry, index) => {
+                      const isBarElevated = entry.value > 40
+                      // Normal: existing theme purple #9B5DE5 / #7E4CC7. Elevated: #fb923c / #f59e0b
+                      const fillColor = isBarElevated ? "#F59E0B" : "#9B5DE5"
+                      return (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={fillColor}
+                          fillOpacity={isBarElevated ? 0.85 : 0.75}
                         />
-                      ) : (
-                        <div
-                          className="w-full absolute bottom-0 bg-white/5 rounded-t"
-                          style={{ height: "2px" }}
-                        />
-                      )}
-
-                      {/* Baseline horizontal dashed line */}
-                      {baseline != null && (
-                        <div
-                          className="absolute inset-x-0 border-t border-dashed border-lavender-soft/30 pointer-events-none"
-                          style={{ bottom: `${(baseline / 100) * 80}px` }}
-                        />
-                      )}
-                    </div>
-                    <span className="text-[8px] text-text-muted truncate w-full text-center">
-                      {pt.label}
-                    </span>
-                  </div>
-                )
-              })}
+                      )
+                    })}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
             </div>
 
             <div className="flex flex-wrap items-center gap-4 text-xs text-text-muted pt-2 border-t border-purple-core/10">
               <div className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded bg-purple-core/60" />
-                <span>MSI</span>
+                <div className="w-2 h-2 rounded bg-purple-core/80" />
+                <span>{isAggregatedPeriod ? "Average MSI" : "Weekly update"}</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <div className="w-3 h-px border-t border-dashed border-lavender-soft/60" />
-                <span>{baseline != null ? `Baseline (${baseline})` : "Baseline —"}</span>
+                <div className="w-3 h-px border-t border-dashed border-lavender-soft/70" />
+                <span>{baseline != null ? `Baseline ref (${baseline})` : "Baseline ref —"}</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded bg-c-warning/80" />
+                <div className="w-2 h-2 rounded bg-amber-500/85" />
                 <span>Elevated (&gt;40)</span>
               </div>
             </div>
@@ -1918,7 +2195,7 @@ function MyStressScreen({ onNav }: { onNav: (s: Screen) => void }) {
       <div className="card-base p-5 mb-4">
         <p className="text-[10px] text-text-muted mb-3">What we've noticed</p>
         <div className="space-y-3">
-          {observations.map((obs, i) => (
+          {dynamicObservations.map((obs, i) => (
             <div key={i} className="flex gap-3 text-sm text-text-secondary">
               <div className="w-1.5 h-1.5 rounded-full bg-lavender-soft mt-1.5 flex-shrink-0" />
               <p className="leading-relaxed text-xs">{obs}</p>
@@ -3773,6 +4050,281 @@ function calcArchetype(answers: number[]) {
   return { winner: top[0], second: second[0], normalized, confidence, blended }
 }
 
+// ── Archetype Validation / User Resonance Component ──────────────────────────
+const RESONANCE_LEVELS = [
+  { score: 1, label: "1 — Not at all" },
+  { score: 2, label: "2 — Slightly" },
+  { score: 3, label: "3 — Somewhat" },
+  { score: 4, label: "4 — Very much" },
+  { score: 5, label: "5 — Extremely" },
+]
+
+const ACCURATE_AREA_OPTIONS = [
+  "The way I handle pressure",
+  "The way stress builds up",
+  "The way I think",
+  "The way I respond to people",
+  "The way I react to situations",
+  "None of these",
+]
+
+const INACCURATE_AREA_OPTIONS = [
+  "The description doesn't sound like me",
+  "I usually react differently",
+  "My stress comes from something different",
+  "The result feels too generic",
+  "Other",
+]
+
+function ArchetypeValidationCard({ archetype }: { archetype: string }) {
+  const [score, setScore] = useState<number | null>(null)
+  const [accurateAreas, setAccurateAreas] = useState<string[]>([])
+  const [inaccurateAreas, setInaccurateAreas] = useState<string[]>([])
+  const [feedbackText, setFeedbackText] = useState("")
+  const [submitting, setSubmitting] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [publicStat, setPublicStat] = useState<{
+    hasSufficientData: boolean
+    statement: string
+  } | null>(null)
+
+  // Fetch aggregate resonance statement (strictly anonymized, requires minimum 30 responses)
+  useEffect(() => {
+    let isMounted = true
+    async function fetchPublicResonance() {
+      try {
+        const res = await fetch(`/api/archetype/stats/public?archetype=${encodeURIComponent(archetype)}&quizVersion=v1`)
+        if (!res.ok) return
+        const data = await res.json()
+        if (isMounted && data.success && data.data) {
+          setPublicStat({
+            hasSufficientData: !!data.data.hasSufficientData,
+            statement: data.data.statement,
+          })
+        }
+      } catch {
+        // Silently fail if network error
+      }
+    }
+    fetchPublicResonance()
+    return () => {
+      isMounted = false
+    }
+  }, [archetype])
+
+  const toggleAccurateArea = (option: string) => {
+    if (option === "None of these") {
+      setAccurateAreas((prev) => (prev.includes("None of these") ? [] : ["None of these"]))
+      return
+    }
+    setAccurateAreas((prev) => {
+      const filtered = prev.filter((item) => item !== "None of these")
+      return filtered.includes(option) ? filtered.filter((i) => i !== option) : [...filtered, option]
+    })
+  }
+
+  const toggleInaccurateArea = (option: string) => {
+    setInaccurateAreas((prev) =>
+      prev.includes(option) ? prev.filter((i) => i !== option) : [...prev, option]
+    )
+  }
+
+  const handleSubmit = async () => {
+    if (!score) return
+    setSubmitting(true)
+    setErrorMessage(null)
+
+    try {
+      const token = localStorage.getItem("cq_token")
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      }
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`
+      }
+
+      const res = await fetch("/api/archetype/validation", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          archetype,
+          quizVersion: "v1",
+          validationScore: score,
+          accurateAreas,
+          inaccurateAreas: score <= 2 ? inaccurateAreas : [],
+          feedbackText: feedbackText.trim(),
+        }),
+      })
+
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setSubmitted(true)
+      } else {
+        setErrorMessage(data?.message || "Unable to submit feedback. Please try again.")
+      }
+    } catch {
+      setErrorMessage("Network error. Please try again.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="card-elevated rounded-3xl p-5 mb-5 border border-purple-core/20 bg-[#0E1029]/80 backdrop-blur-md">
+      {/* Public resonance indicator if available */}
+      {publicStat?.statement && (
+        <div className="mb-4 pb-3 border-b border-white/5 flex items-center gap-2">
+          <div className="w-1.5 h-1.5 rounded-full bg-purple-core animate-pulse-dot flex-shrink-0" />
+          <p className="text-[11px] text-lavender-soft font-medium leading-relaxed">
+            {publicStat.statement}
+          </p>
+        </div>
+      )}
+
+      {submitted ? (
+        <div className="text-center py-4 space-y-2 animate-fade-in">
+          <div className="w-10 h-10 rounded-full bg-c-success/15 border border-c-success/30 flex items-center justify-center mx-auto text-c-success text-lg">
+            ✓
+          </div>
+          <h3 className="text-sm font-semibold text-warm-white">
+            Thanks for helping us improve your stress profile.
+          </h3>
+          <p className="text-xs text-text-muted">
+            Your input helps calibrate how this stress pattern shows up for real teams.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div>
+            <h3 className="text-base font-semibold text-warm-white mb-1">
+              Does this feel like you?
+            </h3>
+            <p className="text-xs text-text-secondary leading-relaxed">
+              How well does this archetype describe the way stress usually shows up for you?
+            </p>
+          </div>
+
+          {/* 1–5 Resonance scale */}
+          <div className="space-y-1.5">
+            {RESONANCE_LEVELS.map((item) => {
+              const active = score === item.score
+              return (
+                <button
+                  key={item.score}
+                  type="button"
+                  onClick={() => setScore(item.score)}
+                  className={`w-full py-2.5 px-3.5 rounded-xl text-xs font-medium text-left transition-all border flex items-center justify-between ${
+                    active
+                      ? "bg-purple-core/20 border-purple-core text-warm-white shadow-sm"
+                      : "bg-surface-elevated/40 border-border-p text-text-secondary hover:border-purple-core/40 hover:text-warm-white"
+                  }`}
+                >
+                  <span>{item.label}</span>
+                  {active && <span className="text-purple-core font-bold text-sm">✓</span>}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Additional details revealed once a score is selected */}
+          {score !== null && (
+            <div className="space-y-4 pt-3 border-t border-white/5 animate-fade-in">
+              {/* Question 2: What felt accurate */}
+              <div>
+                <p className="text-xs font-semibold text-warm-white mb-1">
+                  What felt most like you?
+                </p>
+                <p className="text-[11px] text-text-muted mb-2">
+                  Select all that resonate:
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {ACCURATE_AREA_OPTIONS.map((area) => {
+                    const isSelected = accurateAreas.includes(area)
+                    return (
+                      <button
+                        key={area}
+                        type="button"
+                        onClick={() => toggleAccurateArea(area)}
+                        className={`text-[11px] px-3 py-1.5 rounded-full border transition-all ${
+                          isSelected
+                            ? "bg-purple-core text-white border-purple-core font-medium"
+                            : "bg-surface-elevated/40 border-border-p text-text-secondary hover:border-white/20"
+                        }`}
+                      >
+                        {area}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Question 3: What felt off (Shown if score is 1 or 2) */}
+              {score <= 2 && (
+                <div className="animate-fade-in">
+                  <p className="text-xs font-semibold text-warm-white mb-1">
+                    What felt off?
+                  </p>
+                  <p className="text-[11px] text-text-muted mb-2">
+                    Help us understand what missed the mark:
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {INACCURATE_AREA_OPTIONS.map((area) => {
+                      const isSelected = inaccurateAreas.includes(area)
+                      return (
+                        <button
+                          key={area}
+                          type="button"
+                          onClick={() => toggleInaccurateArea(area)}
+                          className={`text-[11px] px-3 py-1.5 rounded-full border transition-all ${
+                            isSelected
+                              ? "bg-c-warning/20 text-c-warning border-c-warning/40 font-medium"
+                              : "bg-surface-elevated/40 border-border-p text-text-secondary hover:border-white/20"
+                          }`}
+                        >
+                          {area}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Question 4: Optional text feedback */}
+              <div>
+                <p className="text-xs font-semibold text-warm-white mb-1">
+                  Want to tell us why?
+                </p>
+                <textarea
+                  value={feedbackText}
+                  onChange={(e) => setFeedbackText(e.target.value)}
+                  placeholder="Tell us what felt accurate or inaccurate..."
+                  rows={2}
+                  className="w-full text-xs p-3 rounded-xl bg-surface-elevated/40 border border-border-p text-warm-white placeholder:text-text-muted/60 focus:outline-none focus:border-purple-core/60 transition-colors resize-none"
+                />
+              </div>
+
+              {errorMessage && (
+                <p className="text-xs text-c-critical font-medium">{errorMessage}</p>
+              )}
+
+              {/* Submit button */}
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={handleSubmit}
+                className="w-full py-2.5 rounded-xl bg-purple-core hover:bg-purple-600 disabled:opacity-50 text-white font-semibold text-xs transition-colors shadow-sm"
+              >
+                {submitting ? "Submitting..." : "Submit feedback"}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 type QuizStage = "intro" | "quiz" | "calculating" | "result"
 
 function ArchetypeScreen({ onNav }: { onNav: (s: Screen) => void }) {
@@ -3983,6 +4535,9 @@ function ArchetypeScreen({ onNav }: { onNav: (s: Screen) => void }) {
           </div>
         )}
 
+        {/* User Resonance / Archetype Validation Card */}
+        <ArchetypeValidationCard archetype={result.winner} />
+
         <button onClick={() => onNav("home")} className="w-full btn-primary py-3.5 text-sm font-semibold mb-3">
           Go to home screen →
         </button>
@@ -4192,8 +4747,12 @@ function ProfileScreen({ onBack, onNav }: { onBack: () => void; onNav: (s: Scree
       ? `${ageVal} · ${genderVal}`
       : ageVal || genderVal || "—"
 
-  const baselineScore = metrics?.baselineMsi ?? profile?.baselineMsi ?? null
-  const currentScore = metrics?.currentMsi ?? profile?.currentMsi ?? null
+  const msiArray = Array.isArray(metrics?.msi) && metrics.msi.length > 0 ? metrics.msi : []
+  const latestItem = msiArray.length > 0 ? msiArray[msiArray.length - 1] : null
+  const baselineItem = msiArray.find((item: any) => item.type === "baseline")
+
+  const baselineScore = baselineItem ? baselineItem.score : (metrics?.baselineMsi ?? profile?.baselineMsi ?? null)
+  const currentScore = latestItem ? latestItem.score : (metrics?.currentMsi ?? profile?.currentMsi ?? baselineScore)
   const lastDate = metrics?.lastAssessmentDate
     ? new Date(metrics.lastAssessmentDate).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })
     : "—"
@@ -4719,17 +5278,32 @@ export default function EmployeeApp({ initialScreen = "home" }: { initialScreen?
   useEffect(() => {
     const token = localStorage.getItem("cq_token")
     if (!token) return
-    fetch("/api/assessments/metrics", {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.success && data.data?.currentMsi != null) {
-          setAppCurrentMsi(data.data.currentMsi)
-          localStorage.setItem("cq_current_msi", String(data.data.currentMsi))
-        }
+    const fetchMetrics = () => {
+      fetch("/api/assessments/metrics", {
+        headers: { Authorization: `Bearer ${token}` },
       })
-      .catch(() => {})
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.success && data.data?.currentMsi != null) {
+            setAppCurrentMsi(data.data.currentMsi)
+            localStorage.setItem("cq_current_msi", String(data.data.currentMsi))
+          }
+          if (data.success && data.data?.baselineMsi != null) {
+            localStorage.setItem("cq_baseline_msi", String(data.data.baselineMsi))
+          }
+        })
+        .catch(() => {})
+    }
+
+    fetchMetrics()
+
+    const handleBaselineUpdated = () => {
+      fetchMetrics()
+    }
+    window.addEventListener("cq_baseline_updated", handleBaselineUpdated)
+    return () => {
+      window.removeEventListener("cq_baseline_updated", handleBaselineUpdated)
+    }
   }, [screen])
 
   const isFullscreen = screen === "reset-active"

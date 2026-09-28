@@ -6,7 +6,8 @@ import { apiRequest } from "@/lib/api"
 
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
-    Active: "bg-green-100 text-green-700 border-green-200",
+    Active: "bg-emerald-50 text-emerald-700 border-emerald-200 font-semibold",
+    Superseded: "bg-gray-100 text-gray-500 border-gray-200",
     Pending: "bg-yellow-100 text-yellow-700 border-yellow-200",
     "Invitation Pending": "bg-amber-100 text-amber-700 border-amber-200",
     Expired: "bg-orange-100 text-orange-700 border-orange-200",
@@ -3913,11 +3914,19 @@ function AssessmentDetailsModal({
 }
 
 function AssessmentsScreen() {
+  const [activeTab, setActiveTab] = useState<"ledger" | "archetypes">("ledger")
   const [assessments, setAssessments] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [selectedAssessmentId, setSelectedAssessmentId] = useState<string | null>(null)
+
+  // Archetype validation state
+  const [archetypeAnalytics, setArchetypeAnalytics] = useState<any[]>([])
+  const [archetypeSummary, setArchetypeSummary] = useState<any>(null)
+  const [archetypeLoading, setArchetypeLoading] = useState(false)
+  const [archetypeError, setArchetypeError] = useState<string | null>(null)
+  const [selectedQuizVersion, setSelectedQuizVersion] = useState("v1")
 
   const fetchAssessments = async () => {
     setLoading(true)
@@ -3939,11 +3948,38 @@ function AssessmentsScreen() {
     }
   }
 
+  const fetchArchetypeAnalytics = async () => {
+    setArchetypeLoading(true)
+    setArchetypeError(null)
+    try {
+      const res = await apiRequest(`/api/archetype/analytics?quizVersion=${encodeURIComponent(selectedQuizVersion)}`)
+      const data = res.data
+      if (res.ok && data?.success && data.data) {
+        setArchetypeAnalytics(data.data.archetypes || [])
+        setArchetypeSummary(data.data.summary || null)
+      } else {
+        setArchetypeAnalytics([])
+        setArchetypeError(data?.message || "Unable to load archetype resonance analytics.")
+      }
+    } catch {
+      setArchetypeAnalytics([])
+      setArchetypeError("Unable to load archetype resonance analytics. Check network.")
+    } finally {
+      setArchetypeLoading(false)
+    }
+  }
+
   useEffect(() => {
     fetchAssessments()
   }, [])
 
-  // Functional search filtering
+  useEffect(() => {
+    if (activeTab === "archetypes") {
+      fetchArchetypeAnalytics()
+    }
+  }, [activeTab, selectedQuizVersion])
+
+  // Functional search filtering for ledger
   const filteredAssessments = useMemo(() => {
     if (!search.trim()) return assessments
     const q = search.trim().toLowerCase()
@@ -3969,63 +4005,288 @@ function AssessmentsScreen() {
 
   return (
     <>
-      <TablePage
-        title="Assessments"
-        desc="Global ledger of completed assessments across all organisations."
-        columns={["Employee", "Organisation", "Type", "Score", "Date", "Status", ""]}
-        data={filteredAssessments}
-        searchValue={search}
-        onSearchChange={setSearch}
-        loading={loading}
-        emptyMessage={
-          error ? (
-            <div className="space-y-2">
-              <p className="text-red-600 font-medium text-xs">{error}</p>
-              <button
-                onClick={fetchAssessments}
-                className="text-xs text-purple-700 hover:text-purple-800 font-semibold underline"
+      {/* Top Tab Switcher */}
+      <div className="flex items-center gap-2 mb-4 bg-gray-100 p-1 rounded-xl w-fit border border-gray-200">
+        <button
+          type="button"
+          onClick={() => setActiveTab("ledger")}
+          className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+            activeTab === "ledger"
+              ? "bg-white text-gray-900 shadow-sm"
+              : "text-gray-500 hover:text-gray-900"
+          }`}
+        >
+          Assessment Ledger
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("archetypes")}
+          className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+            activeTab === "archetypes"
+              ? "bg-white text-purple-700 shadow-sm"
+              : "text-gray-500 hover:text-gray-900"
+          }`}
+        >
+          <span>Archetype Resonance & Validation</span>
+          <span className="bg-purple-100 text-purple-700 text-[10px] px-1.5 py-0.5 rounded-full font-bold">R&D</span>
+        </button>
+      </div>
+
+      {activeTab === "ledger" ? (
+        <TablePage
+          title="Assessments"
+          desc="Global ledger of completed assessments across all organisations."
+          columns={["Employee", "Organisation", "Type", "Score", "Date", "Status", ""]}
+          data={filteredAssessments}
+          searchValue={search}
+          onSearchChange={setSearch}
+          loading={loading}
+          emptyMessage={
+            error ? (
+              <div className="space-y-2">
+                <p className="text-red-600 font-medium text-xs">{error}</p>
+                <button
+                  onClick={fetchAssessments}
+                  className="text-xs text-purple-700 hover:text-purple-800 font-semibold underline"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : (
+              "No assessments found."
+            )
+          }
+          renderRow={(a: any) => (
+            <>
+              <td className="px-6 py-4">
+                <p className="font-semibold text-gray-900">{a.employeeName}</p>
+                <p className="font-mono text-xs text-gray-400 mt-0.5">{a.employeeId}</p>
+              </td>
+              <td className="px-6 py-4 text-gray-700">
+                <p className="font-medium text-gray-900">{a.organisationName}</p>
+                {a.organisationCode && (
+                  <p className="font-mono text-[11px] text-gray-400">{a.organisationCode}</p>
+                )}
+              </td>
+              <td className="px-6 py-4 text-gray-900 font-medium">{a.type}</td>
+              <td className="px-6 py-4 font-mono font-bold text-gray-800">
+                {a.scoreDisplay ?? (a.score !== null ? a.score : "N/A")}
+              </td>
+              <td className="px-6 py-4 text-gray-500 text-xs">
+                {a.date ? new Date(a.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+              </td>
+              <td className="px-6 py-4">
+                <StatusBadge status={a.status} />
+              </td>
+              <td className="px-6 py-4 text-right">
+                <button
+                  type="button"
+                  onClick={() => setSelectedAssessmentId(a.id)}
+                  className="text-purple-600 hover:text-purple-800 font-medium text-xs bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-md transition-colors cursor-pointer"
+                >
+                  View
+                </button>
+              </td>
+            </>
+          )}
+        />
+      ) : (
+        /* Archetype Validation / User Resonance R&D Analytics */
+        <div className="space-y-6">
+          <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-lg font-bold text-gray-900">Archetype User Resonance & Validation</h1>
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
+                  R&D Observational Metrics
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 mt-1 max-w-2xl leading-relaxed">
+                Structured user-reported fit and resonance data for all 7 stress archetypes. Strict privacy guidelines applied: anonymous aggregate feedback only.
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="text-xs font-semibold text-gray-600">Quiz Version:</label>
+              <select
+                value={selectedQuizVersion}
+                onChange={(e) => setSelectedQuizVersion(e.target.value)}
+                className="text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-core/20"
               >
-                Retry
+                <option value="v1">v1 (Current Standard)</option>
+              </select>
+              <button
+                type="button"
+                onClick={fetchArchetypeAnalytics}
+                className="text-xs bg-purple-50 hover:bg-purple-100 text-purple-700 font-semibold px-3 py-2 rounded-lg border border-purple-200 transition-colors cursor-pointer"
+              >
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          {/* Overview Summary Cards */}
+          {archetypeSummary && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Total Validations</p>
+                <p className="text-3xl font-bold text-gray-900 mt-2 font-mono">{archetypeSummary.totalResponses}</p>
+                <p className="text-[11px] text-gray-400 mt-1">Across all 7 stress archetypes</p>
+              </div>
+              <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Average Resonance</p>
+                <p className="text-3xl font-bold text-purple-700 mt-2 font-mono">
+                  {archetypeSummary.averageScore > 0 ? `${archetypeSummary.averageScore} / 5` : "—"}
+                </p>
+                <p className="text-[11px] text-gray-400 mt-1">1–5 user-reported fit scale</p>
+              </div>
+              <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">High Fit (Score 4–5)</p>
+                <p className="text-3xl font-bold text-emerald-600 mt-2 font-mono">
+                  {archetypeSummary.overallHighFitPct}%
+                </p>
+                <p className="text-[11px] text-gray-400 mt-1">Strongly resonant user rate</p>
+              </div>
+              <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Low Fit (Score 1–2)</p>
+                <p className="text-3xl font-bold text-amber-600 mt-2 font-mono">
+                  {archetypeSummary.overallLowFitPct}%
+                </p>
+                <p className="text-[11px] text-gray-400 mt-1">Candidates for refinement review</p>
+              </div>
+            </div>
+          )}
+
+          {archetypeLoading ? (
+            <div className="bg-white border border-gray-200 rounded-xl p-12 text-center text-gray-500 shadow-sm flex items-center justify-center gap-2">
+              <svg className="w-5 h-5 animate-spin text-purple-core" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              </svg>
+              <span className="text-sm font-medium">Loading archetype validation data...</span>
+            </div>
+          ) : archetypeError ? (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center text-red-600 text-sm shadow-sm space-y-2">
+              <p>{archetypeError}</p>
+              <button
+                type="button"
+                onClick={fetchArchetypeAnalytics}
+                className="text-xs font-semibold text-red-700 underline cursor-pointer"
+              >
+                Try Again
               </button>
             </div>
           ) : (
-            "No assessments found."
-          )
-        }
-        renderRow={(a: any) => (
-          <>
-            <td className="px-6 py-4">
-              <p className="font-semibold text-gray-900">{a.employeeName}</p>
-              <p className="font-mono text-xs text-gray-400 mt-0.5">{a.employeeId}</p>
-            </td>
-            <td className="px-6 py-4 text-gray-700">
-              <p className="font-medium text-gray-900">{a.organisationName}</p>
-              {a.organisationCode && (
-                <p className="font-mono text-[11px] text-gray-400">{a.organisationCode}</p>
-              )}
-            </td>
-            <td className="px-6 py-4 text-gray-900 font-medium">{a.type}</td>
-            <td className="px-6 py-4 font-mono font-bold text-gray-800">
-              {a.scoreDisplay ?? (a.score !== null ? a.score : "N/A")}
-            </td>
-            <td className="px-6 py-4 text-gray-500 text-xs">
-              {a.date ? new Date(a.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
-            </td>
-            <td className="px-6 py-4">
-              <StatusBadge status={a.status} />
-            </td>
-            <td className="px-6 py-4 text-right">
-              <button
-                type="button"
-                onClick={() => setSelectedAssessmentId(a.id)}
-                className="text-purple-600 hover:text-purple-800 font-medium text-xs bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-md transition-colors cursor-pointer"
-              >
-                View
-              </button>
-            </td>
-          </>
-        )}
-      />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {archetypeAnalytics.map((item) => (
+                <div key={item.archetype} className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-start justify-between pb-4 border-b border-gray-100">
+                      <div>
+                        <h2 className="text-base font-bold text-gray-900">{item.archetype}</h2>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {item.totalResponses} response{item.totalResponses === 1 ? "" : "s"} recorded
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-xs font-semibold text-gray-400 uppercase">Avg Resonance</span>
+                        <p className="text-xl font-bold font-mono text-purple-700">
+                          {item.totalResponses > 0 ? `${item.averageScore} / 5` : "—"}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Fit breakdown pills */}
+                    <div className="grid grid-cols-3 gap-2 py-4 border-b border-gray-100">
+                      <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-center">
+                        <p className="text-[10px] font-semibold text-emerald-800 uppercase tracking-wider">High Fit (4–5)</p>
+                        <p className="text-lg font-bold font-mono text-emerald-700 mt-0.5">{item.highFitPct}%</p>
+                      </div>
+                      <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-center">
+                        <p className="text-[10px] font-semibold text-blue-800 uppercase tracking-wider">Moderate (3)</p>
+                        <p className="text-lg font-bold font-mono text-blue-700 mt-0.5">{item.moderateFitPct}%</p>
+                      </div>
+                      <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-center">
+                        <p className="text-[10px] font-semibold text-amber-800 uppercase tracking-wider">Low Fit (1–2)</p>
+                        <p className="text-lg font-bold font-mono text-amber-700 mt-0.5">{item.lowFitPct}%</p>
+                      </div>
+                    </div>
+
+                    {/* Accurate Areas Breakdown */}
+                    <div className="py-4 border-b border-gray-100">
+                      <p className="text-xs font-bold text-gray-900 mb-2 flex items-center justify-between">
+                        <span>What felt most like them</span>
+                        <span className="text-[11px] font-normal text-gray-400">All respondents</span>
+                      </p>
+                      {item.accurateAreas && item.accurateAreas.length > 0 ? (
+                        <div className="space-y-2">
+                          {item.accurateAreas.slice(0, 4).map((area: any) => (
+                            <div key={area.area} className="space-y-1">
+                              <div className="flex justify-between text-xs">
+                                <span className="text-gray-700 font-medium truncate pr-2">{area.area}</span>
+                                <span className="font-mono text-gray-500 font-semibold">{area.percentage}%</span>
+                              </div>
+                              <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-purple-core rounded-full"
+                                  style={{ width: `${area.percentage}%` }}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-gray-400 italic">No accurate areas reported yet.</p>
+                      )}
+                    </div>
+
+                    {/* Inaccurate Areas Breakdown (Low resonance respondents) */}
+                    <div className="pt-4">
+                      <p className="text-xs font-bold text-gray-900 mb-2 flex items-center justify-between">
+                        <span>What felt off</span>
+                        <span className="text-[11px] font-normal text-amber-600">Low-fit respondents (Score 1–2)</span>
+                      </p>
+                      {item.inaccurateAreas && item.inaccurateAreas.length > 0 ? (
+                        <div className="space-y-2">
+                          {item.inaccurateAreas.slice(0, 3).map((area: any) => (
+                            <div key={area.area} className="space-y-1">
+                              <div className="flex justify-between text-xs">
+                                <span className="text-gray-700 font-medium truncate pr-2">{area.area}</span>
+                                <span className="font-mono text-amber-600 font-semibold">{area.percentage}%</span>
+                              </div>
+                              <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-amber-500 rounded-full"
+                                  style={{ width: `${area.percentage}%` }}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-gray-400 italic">No low-fit discrepancies reported.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Threshold Public Indicator */}
+                  <div className="mt-5 pt-3 border-t border-gray-100 flex items-center justify-between text-[11px]">
+                    <span className="text-gray-500 font-medium">Public status:</span>
+                    {item.totalResponses >= 30 ? (
+                      <span className="text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full font-semibold border border-emerald-200">
+                        Active ({item.highFitPct}% reported strong resonance)
+                      </span>
+                    ) : (
+                      <span className="text-gray-500 bg-gray-100 px-2.5 py-0.5 rounded-full font-medium">
+                        Collecting data ({item.totalResponses} / 30 required)
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Assessment Details Modal */}
       <AssessmentDetailsModal

@@ -12,7 +12,9 @@ import ListenerApp, { ActiveSessionScreen } from "@/screens/listener/ListenerApp
 import AcceptInvitation from "@/screens/auth/AcceptInvitation"
 import ListenerAcceptInvite from "@/screens/auth/ListenerAcceptInvite"
 import PrivacyPolicyScreen from "@/screens/legal/PrivacyPolicy"
+import TermsAndConditionsScreen from "@/screens/legal/TermsAndConditions"
 import ParticipantConsentScreen from "@/screens/legal/ParticipantConsent"
+import ContactScreen from "@/screens/contact/ContactScreen"
 import logoSrc from "@/imports/image-2.png"
 
 // ── Auth & Storage Helpers ───────────────────────────────────────────────────
@@ -527,6 +529,26 @@ export const router = createBrowserRouter([
       {
         path: "privacy-policy",
         Component: PrivacyPolicyScreen,
+      },
+      {
+        path: "privacy",
+        Component: PrivacyPolicyScreen,
+      },
+      {
+        path: "terms-and-conditions",
+        Component: TermsAndConditionsScreen,
+      },
+      {
+        path: "terms",
+        Component: TermsAndConditionsScreen,
+      },
+      {
+        path: "contact",
+        Component: ContactScreen,
+      },
+      {
+        path: "contact-us",
+        Component: ContactScreen,
       },
       {
         path: "participant-consent",

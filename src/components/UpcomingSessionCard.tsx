@@ -37,6 +37,8 @@ export default function UpcomingSessionCard({
   const [now, setNow] = useState<number>(Date.now())
   const [alertMessage, setAlertMessage] = useState<string | null>(null)
 
+  const [consecutiveErrors, setConsecutiveErrors] = useState(0)
+
   // Fetch upcoming session if not provided directly
   const fetchUpcoming = async () => {
     try {
@@ -45,11 +47,17 @@ export default function UpcomingSessionCard({
       const res = await fetch("/api/sessions/upcoming", {
         headers: { Authorization: `Bearer ${token}` },
       })
+      if (!res.ok) {
+        setConsecutiveErrors((prev) => prev + 1)
+        return
+      }
       const data = await res.json()
-      if (res.ok && data.success) {
+      if (data.success) {
         setSession(data.session || null)
+        setConsecutiveErrors(0)
       }
     } catch (err) {
+      setConsecutiveErrors((prev) => prev + 1)
       console.warn("[UPCOMING-CARD] Failed to fetch session:", err)
     } finally {
       setLoading(false)
@@ -62,10 +70,12 @@ export default function UpcomingSessionCard({
       setLoading(false)
     } else {
       fetchUpcoming()
-      const fetchInterval = setInterval(fetchUpcoming, 15000)
+      // If we encounter repeated failures, do not continuously hammer the server
+      if (consecutiveErrors >= 3) return
+      const fetchInterval = setInterval(fetchUpcoming, 20000)
       return () => clearInterval(fetchInterval)
     }
-  }, [initialSession])
+  }, [initialSession, consecutiveErrors])
 
   // Live timer tick every 1 second
   useEffect(() => {

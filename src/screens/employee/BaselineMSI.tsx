@@ -70,10 +70,27 @@ const EMOJI_OPTIONS = [
 ]
 
 function calcMSI(answers: (number | null)[]): number {
-  const filled = answers.filter((a) => a !== null) as number[]
-  if (!filled.length) return 30
-  const avg = filled.reduce((s, v) => s + v, 0) / filled.length
-  return Math.round(avg * 25)
+  const m1 = answers[0] ?? 0
+  const m2 = answers[1] ?? 0
+  const moodScore = Math.min(8, m1 + m2)
+
+  const s_scores =
+    (answers[4] ?? 0) +
+    (answers[5] ?? 0) +
+    (answers[6] ?? 0) +
+    (answers[7] ?? 0) +
+    (answers[8] ?? 0) +
+    (answers[9] ?? 0)
+  const psychometricScore = Math.min(24, s_scores)
+
+  const physicalScore = Math.min(4, answers[12] ?? 0)
+
+  const raw =
+    (moodScore / 8) * 20 +
+    (psychometricScore / 24) * 55 +
+    (physicalScore / 4) * 25
+
+  return Math.max(0, Math.min(100, Math.round(raw)))
 }
 
 function getBandLabel(msi: number) {
@@ -122,26 +139,33 @@ export default function BaselineMSI({ onComplete, onBack }: BaselineMSIProps) {
           if (data.data.lastBaselineMsiDate) {
             localStorage.setItem("cq_last_baseline_date", data.data.lastBaselineMsiDate)
           }
-        } else if (!res.ok && data.message) {
-          setErrorMessage(data.message)
-          setStage("intro")
-          return
+          // Notify the rest of the application that baseline has been updated
+          window.dispatchEvent(
+            new CustomEvent("cq_baseline_updated", {
+              detail: {
+                baselineMsi: msiVal,
+                lastBaselineMsiDate: data.data.lastBaselineMsiDate,
+                nextBaselineMsiDate: data.data.nextBaselineMsiDate,
+                baselineMsiHistory: data.data.baselineMsiHistory,
+              },
+            })
+          )
+          setTimeout(() => {
+            setStage("done")
+          }, 1500)
         } else {
-          setServerBaseline(localScore)
-          localStorage.setItem("cq_baseline_msi", String(localScore))
+          const errText = data?.message || "Failed to save baseline assessment. Please try again."
+          setErrorMessage(errText)
+          setStage("intro")
         }
       } else {
-        setServerBaseline(localScore)
-        localStorage.setItem("cq_baseline_msi", String(localScore))
+        setErrorMessage("Authentication session expired. Please log in again.")
+        setStage("intro")
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn("[BASELINE] Error submitting to backend:", err)
-      setServerBaseline(localScore)
-      localStorage.setItem("cq_baseline_msi", String(localScore))
-    } finally {
-      setTimeout(() => {
-        setStage("done")
-      }, 1500)
+      setErrorMessage(err?.message || "Connection error submitting baseline. Please try again.")
+      setStage("intro")
     }
   }
 

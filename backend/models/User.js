@@ -153,6 +153,29 @@ const userSchema = new mongoose.Schema(
       default: false,
     },
 
+    // ── Unified MSI Array (Single Source of Truth) ─────────────────────────
+    msi: [
+      {
+        score: {
+          type: Number,
+          required: true,
+          min: 0,
+          max: 100,
+        },
+        type: {
+          type: String,
+          enum: ["baseline", "weekly"],
+          required: true,
+          default: "weekly",
+        },
+        recordedAt: {
+          type: Date,
+          required: true,
+          default: Date.now,
+        },
+      },
+    ],
+
     // ── Baseline Stress Index (MSI) tracking & weekly updates ───────────────
     baselineMsi: {
       type: Number,
@@ -271,6 +294,7 @@ userSchema.methods.toSafeObject = function () {
     onboardingCompleted: this.onboardingCompleted,
     baselineMsi: this.baselineMsi,
     baselineCompletedAt: this.baselineCompletedAt,
+    msi: Array.isArray(this.msi) ? this.msi : [],
     settings: this.settings || {
       dailyCheckInReminder: true,
       reduceMotion: false,

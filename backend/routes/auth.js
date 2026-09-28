@@ -9,7 +9,7 @@ const { sendEmployeeApprovalNotification, sendEmployeeApprovalStatusEmail } = re
 const { normalizeDepartmentName } = require("../services/departmentService")
 const { signToken, requireAuth, requireHR } = require("../middleware/auth")
 
-const { generateOrgEmployeeId } = require("../services/employeeIdService")
+const { generateOrgEmployeeId, isValidOrgEmployeeId } = require("../services/employeeIdService")
 
 // ── Utility: generate organisation-specific employeeId ──────────────────────────
 async function generateEmployeeId(organisationId) {
@@ -954,14 +954,23 @@ async function handleApproveEmployee(req, res) {
       return res.status(403).json({ success: false, message: "Access denied: cross-organisation action." })
     }
 
-    const hasValidId = employee.employeeId && employee.employeeId !== "Pending ID" && employee.employeeId !== "pending"
+    // Find organisation to strictly validate prefix
+    const org = await Organisation.findById(employee.organisationId) ||
+      await Organisation.findOne({
+        $or: [
+          { organisationId: employee.organisationId },
+          { organisationCode: employee.organisationCode },
+        ],
+      })
 
-    // If employee is already approved/active AND already has a valid ID, reject duplicate approval
+    const hasValidId = org && isValidOrgEmployeeId(employee.employeeId, org)
+
+    // If employee is already approved/active AND already has a valid ID matching their org prefix, reject duplicate approval
     if ((employee.status === "Approved" || employee.status === "Active") && hasValidId) {
       return res.status(400).json({ success: false, message: "Employee is already approved with ID " + employee.employeeId })
     }
 
-    const employeeId = hasValidId ? employee.employeeId : await generateEmployeeId(employee.organisationId)
+    const employeeId = hasValidId ? employee.employeeId : await generateEmployeeId(org || employee.organisationId)
     employee.status = "Active"
     employee.employeeId = employeeId
     if (!employee.approvedAt) {
@@ -1097,17 +1106,25 @@ async function handleGetHREmployees(req, res) {
 
     const employees = await User.find(baseOrgFilter).sort({ createdAt: -1 })
 
-    // Auto-cure any Active/Approved employees who are missing an employeeId
+    // Auto-cure any Active/Approved employees who are missing an employeeId or have invalid prefix
+    const cureOrgDoc = req.user.organisationId ? await Organisation.findOne({
+      $or: [
+        ...(mongoose.isValidObjectId(req.user.organisationId) ? [{ _id: req.user.organisationId }] : []),
+        { organisationId: req.user.organisationId },
+        { organisationCode: req.user.organisationCode },
+      ],
+    }) : null
+
     for (const emp of employees) {
       const isApprovedOrActive = emp.status === "Approved" || emp.status === "Active"
-      const lacksId = !emp.employeeId || emp.employeeId === "Pending ID" || emp.employeeId === "pending"
-      if (isApprovedOrActive && lacksId) {
+      const lacksValidId = !cureOrgDoc || !isValidOrgEmployeeId(emp.employeeId, cureOrgDoc)
+      if (isApprovedOrActive && lacksValidId) {
         try {
           const generatedId = await generateEmployeeId(emp.organisationId)
           emp.employeeId = generatedId
           if (!emp.approvedAt) emp.approvedAt = emp.createdAt || new Date()
           await emp.save()
-          console.log(`[HR EMPLOYEES] Auto-assigned missing employeeId for ${emp.name}: ${generatedId}`)
+          console.log(`[HR EMPLOYEES] Auto-assigned missing/corrected employeeId for ${emp.name}: ${generatedId}`)
         } catch (genErr) {
           console.error(`[HR EMPLOYEES] Error auto-generating employeeId for ${emp._id}:`, genErr.message)
         }

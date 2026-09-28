@@ -2061,8 +2061,7 @@ router.post("/:sessionId/cancel", requireAuth, (req, res, next) => {
 // GET /api/listener/sessions/upcoming or /api/sessions/upcoming
 //
 // Protected — fetches earliest active upcoming session for logged-in user
-// ─────────────────────────────────────────────────────────────────────────────
-router.get("/sessions/upcoming", requireAuth, async (req, res) => {
+router.get(["/sessions/upcoming", "/upcoming"], requireAuth, async (req, res) => {
   try {
     const ListenerSession = require("../models/ListenerSession")
     const { getSessionStartTimestamp, getSessionEndTimestamp, expirePassedSessions } = require("../services/sessionNotificationService")
@@ -2154,7 +2153,7 @@ router.get("/sessions/upcoming", requireAuth, async (req, res) => {
   }
 })
 
-// Alias for /api/listener/upcoming
+// Aliases so both /api/sessions/upcoming and /api/listener/sessions/upcoming (and /api/listener/upcoming) resolve
 router.get("/upcoming", requireAuth, (req, res, next) => {
   req.url = "/sessions/upcoming"
   router.handle(req, res, next)

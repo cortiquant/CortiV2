@@ -10,9 +10,12 @@ const Counter = require("../models/Counter")
  * 2. If org.name is "CortiQuant" (case-insensitive), default to "EMP" to preserve existing naming convention.
  * 3. If org.organisationCode exists (e.g. "FLYA5587"), extract the alphabetic part (e.g. "FLYA").
  * 4. Fallback: extract the first 4 alphabetic characters from the organisation name, uppercase.
+ * 5. NEVER default a non-CortiQuant organisation to "EMP". If org is completely missing or unspecified, throws or uses org-provided data.
  */
 function resolveOrgPrefix(org) {
-  if (!org) return "EMP"
+  if (!org) {
+    throw new Error("[EMPLOYEE_ID_SERVICE] Cannot determine prefix: organisation is missing.")
+  }
 
   if (org.employeeIdPrefix && typeof org.employeeIdPrefix === "string" && org.employeeIdPrefix.trim()) {
     return org.employeeIdPrefix.trim().toUpperCase()
@@ -36,12 +39,29 @@ function resolveOrgPrefix(org) {
     return nameLetters.slice(0, 4)
   }
 
-  return "EMP"
+  throw new Error(`[EMPLOYEE_ID_SERVICE] Unable to derive employeeId prefix for organisation '${org.name || org._id}'. Please configure employeeIdPrefix.`)
+}
+
+/**
+ * Validates whether an employeeId matches the organisation's expected prefix.
+ * e.g., "FLYA-1006" is valid for FlyanyTrip, but "EMP-1014" is invalid.
+ */
+function isValidOrgEmployeeId(employeeId, org) {
+  if (!employeeId || typeof employeeId !== "string") return false
+  const trimmed = employeeId.trim()
+  if (trimmed === "Pending ID" || trimmed === "pending" || trimmed === "" || trimmed === "—") return false
+  try {
+    const expectedPrefix = resolveOrgPrefix(org)
+    const regex = new RegExp(`^${expectedPrefix}-\\d+$`, "i")
+    return regex.test(trimmed)
+  } catch {
+    return false
+  }
 }
 
 /**
  * Initializes atomic counter for a given prefix by scanning existing max employee ID in DB
- * so existing IDs (e.g., EMP-1001 through EMP-1008) are never duplicated.
+ * so existing IDs (e.g., EMP-1001 through EMP-1008, FLYA-1001 through FLYA-1005) are never duplicated.
  */
 async function initializeCounterIfMissing(prefix) {
   const counterId = `employeeId_${prefix}`
@@ -100,6 +120,10 @@ async function generateOrgEmployeeId(organisationIdOrDoc) {
         { organisationCode: String(organisationIdOrDoc).trim().toUpperCase() },
       ],
     })
+  }
+
+  if (!org) {
+    throw new Error(`[EMPLOYEE_ID_SERVICE] Organisation not found for identifier: ${organisationIdOrDoc}`)
   }
 
   const prefix = resolveOrgPrefix(org)
@@ -170,6 +194,7 @@ async function backfillMissingEmployeeIds() {
 
 module.exports = {
   resolveOrgPrefix,
+  isValidOrgEmployeeId,
   generateOrgEmployeeId,
   backfillMissingEmployeeIds,
   initializeCounterIfMissing,

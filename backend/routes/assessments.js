@@ -128,7 +128,17 @@ router.post("/checkin", requireActiveEmployee, async (req, res) => {
 
     await assessmentDoc.save()
 
-    console.log(`[ASSESSMENT] Daily check-in saved for ${user.username || user.name}: MSI=${msi} (${category})`)
+    // ── Append to User's unified MSI array (Single source of truth) ─────────
+    const newMsiEntry = {
+      score: Math.round(msi),
+      type: "weekly",
+      recordedAt: assessmentDoc.completedAt || new Date(),
+    }
+    await User.findByIdAndUpdate(user._id, {
+      $push: { msi: newMsiEntry },
+    })
+
+    console.log(`[ASSESSMENT] Daily check-in saved for ${user.username || user.name}: MSI=${msi} (${category}) appended to user.msi array`)
 
     await logActivity({
       req,
@@ -267,7 +277,18 @@ router.post("/baseline", requireActiveEmployee, async (req, res) => {
     const { answers, moodCheck, stressPulse, physicalCheck } = req.body
 
     // ── Enforce 7-day validation if previous baseline exists ───────────────────
-    const lastDate = user.lastBaselineMsiDate || user.baselineCompletedAt
+    // Check both user record and the latest Assessment of type "Baseline MSI"
+    const latestBaselineDoc = await Assessment.findOne({
+      userId: user._id,
+      type: "Baseline MSI",
+    }).sort({ completedAt: -1, createdAt: -1 })
+
+    const lastDate =
+      (latestBaselineDoc && latestBaselineDoc.completedAt) ||
+      user.lastBaselineMsiDate ||
+      user.baselineCompletedAt ||
+      null
+
     if (user.baselineMsi != null && lastDate) {
       const lastTime = new Date(lastDate).getTime()
       const nextTime = user.nextBaselineMsiDate
@@ -324,7 +345,13 @@ router.post("/baseline", requireActiveEmployee, async (req, res) => {
     const now = new Date()
     const nextAvailable = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
 
-    // 1. Create Assessment entry of type "Baseline MSI"
+    // 1. Mark any existing Baseline MSI records for this user as "Superseded"
+    await Assessment.updateMany(
+      { userId: user._id, type: "Baseline MSI", status: { $ne: "Superseded" } },
+      { $set: { status: "Superseded" } }
+    )
+
+    // 2. Create Assessment entry of type "Baseline MSI" with status "Active"
     const assessmentDoc = new Assessment({
       userId: user._id,
       employeeId: user.employeeId || null,
@@ -336,12 +363,12 @@ router.post("/baseline", requireActiveEmployee, async (req, res) => {
       msi,
       scores,
       category,
-      status: "Completed",
+      status: "Active",
       completedAt: now,
     })
     await assessmentDoc.save()
 
-    // 2. Prepare new history entry
+    // 3. Prepare new history entry
     const newHistoryEntry = {
       score: msi,
       completedAt: now,
@@ -357,15 +384,39 @@ router.post("/baseline", requireActiveEmployee, async (req, res) => {
     }
     history.push(newHistoryEntry)
 
-    // 3. Persist baseline directly onto User model
-    user.baselineMsi = msi
-    user.baselineCompletedAt = user.baselineCompletedAt || now
-    user.lastBaselineMsiDate = now
-    user.nextBaselineMsiDate = nextAvailable
-    user.baselineMsiHistory = history
-    await user.save()
+    // Unified MSI Array logic:
+    // If the user does not yet have a baseline entry in msi[], mark this first one as 'baseline'.
+    // Every subsequent weekly assessment is appended as 'weekly'.
+    const existingMsiArray = Array.isArray(user.msi) ? user.msi : []
+    const hasBaselineInArray = existingMsiArray.some((item) => item.type === "baseline")
+    const msiEntryType = !hasBaselineInArray ? "baseline" : "weekly"
 
-    console.log(`[ASSESSMENT] Baseline MSI saved for ${user.username || user.name}: MSI=${msi} (${category}), next update: ${nextAvailable.toISOString()}`)
+    const newMsiArrayItem = {
+      score: Math.round(msi),
+      type: msiEntryType,
+      recordedAt: now,
+    }
+
+    // 4. Persist directly onto User model atomically via findByIdAndUpdate
+    // to bypass document validation errors if legacy accounts miss optional profile fields
+    const updatedUser = await User.findByIdAndUpdate(
+      user._id,
+      {
+        $set: {
+          baselineMsi: msi,
+          lastBaselineMsiDate: now,
+          nextBaselineMsiDate: nextAvailable,
+          baselineCompletedAt: user.baselineCompletedAt || now,
+          baselineMsiHistory: history,
+        },
+        $push: {
+          msi: newMsiArrayItem,
+        },
+      },
+      { new: true }
+    )
+
+    console.log(`[ASSESSMENT] Baseline MSI saved for ${user.username || user.name}: MSI=${msi} (${category}), appended to user.msi as '${msiEntryType}', next update: ${nextAvailable.toISOString()}`)
 
     await logActivity({
       req,
@@ -384,13 +435,17 @@ router.post("/baseline", requireActiveEmployee, async (req, res) => {
       data: {
         id: assessmentDoc._id,
         baselineMsi: msi,
+        activeBaselineMsi: msi,
+        currentMsi: msi,
+        msi: updatedUser?.msi || [...existingMsiArray, newMsiArrayItem],
         category,
         scores,
+        status: "Active",
         completedAt: now,
         lastBaselineMsiDate: now.toISOString(),
         nextBaselineMsiDate: nextAvailable.toISOString(),
         remainingDays: 7,
-        baselineMsiHistory: user.baselineMsiHistory,
+        baselineMsiHistory: updatedUser?.baselineMsiHistory || history,
       },
     })
   } catch (err) {
@@ -465,18 +520,38 @@ router.get("/metrics", requireActiveEmployee, async (req, res) => {
       }
     }
 
+    // ── Unified MSI Array as Source of Truth ──────────────────────────────
+    const msiArray = Array.isArray(user.msi) && user.msi.length > 0
+      ? user.msi
+      : []
+
+    // Baseline item is item where type === "baseline" (or fallback to legacy baselineMsi)
+    const baselineItem = msiArray.find((item) => item.type === "baseline")
+    const resolvedBaselineMsi = baselineItem ? baselineItem.score : (user.baselineMsi ?? null)
+
+    // Latest MSI is ALWAYS the last item in the MSI array
+    const latestMsiItem = msiArray.length > 0 ? msiArray[msiArray.length - 1] : null
+    let currentMsi = latestMsiItem ? latestMsiItem.score : resolvedBaselineMsi
+    let currentCategory = currentMsi != null ? getCategory(currentMsi) : null
+    let latestDailyDate = latestMsiItem ? latestMsiItem.recordedAt : (latestDaily ? latestDaily.completedAt : null)
+
     return res.status(200).json({
       success: true,
       data: {
-        baselineMsi: user.baselineMsi ?? null,
-        baselineCompletedAt: user.baselineCompletedAt ?? null,
-        lastBaselineMsiDate: user.lastBaselineMsiDate || user.baselineCompletedAt || null,
+        msi: msiArray,
+        latestMSI: latestMsiItem,
+        baselineMsi: resolvedBaselineMsi,
+        activeBaselineMsi: resolvedBaselineMsi,
+        baselineCompletedAt: user.baselineCompletedAt ?? (baselineItem ? baselineItem.recordedAt : null),
+        baselineUpdatedAt: user.lastBaselineMsiDate || user.baselineCompletedAt || (baselineItem ? baselineItem.recordedAt : null),
+        baselineValidUntil: user.nextBaselineMsiDate || null,
+        lastBaselineMsiDate: user.lastBaselineMsiDate || user.baselineCompletedAt || (baselineItem ? baselineItem.recordedAt : null),
         nextBaselineMsiDate: user.nextBaselineMsiDate || null,
         baselineMsiHistory: user.baselineMsiHistory || [],
         baselineEligibility,
-        currentMsi: latestDaily ? latestDaily.msi : null,
-        currentCategory: latestDaily ? latestDaily.category : null,
-        latestDailyDate: latestDaily ? latestDaily.completedAt : null,
+        currentMsi,
+        currentCategory,
+        latestDailyDate,
         lastAssessmentDate: latestAny ? latestAny.completedAt : (user.baselineCompletedAt || null),
       },
     })
@@ -487,9 +562,8 @@ router.get("/metrics", requireActiveEmployee, async (req, res) => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GET /api/assessments/history?range=7d | 30d | 90d
-// Retrieves authenticated employee's real MSI assessment history.
-// Strictly scopes to employee's own assessments, sorted ascending by date.
+// GET /api/assessments/history?range=7d | 30d | 3m | 1y
+// Retrieves authenticated employee's real MSI assessment history from the unified user.msi array.
 // Returns { success: true, assessments: [{ date, msi, id, type, category }], currentMsi, baselineMsi, usualRange, observations }
 // ─────────────────────────────────────────────────────────────────────────────
 router.get("/history", requireActiveEmployee, async (req, res) => {
@@ -499,53 +573,90 @@ router.get("/history", requireActiveEmployee, async (req, res) => {
       return res.status(404).json({ success: false, message: "User not found." })
     }
 
-    const rangeQuery = (req.query.range || "7d").toLowerCase().trim()
-    let daysBack = 7
-    if (rangeQuery === "30d") daysBack = 30
-    else if (rangeQuery === "90d") daysBack = 90
+    const rangeQuery = (req.query.range || "30d").toLowerCase().trim()
+    let daysBack = 30
+    const now = new Date()
+    const sinceDate = new Date(now)
 
-    const sinceDate = new Date()
-    sinceDate.setDate(sinceDate.getDate() - daysBack)
+    if (rangeQuery === "7d") {
+      daysBack = 7
+      sinceDate.setDate(sinceDate.getDate() - 7)
+    } else if (rangeQuery === "30d") {
+      daysBack = 30
+      sinceDate.setDate(sinceDate.getDate() - 30)
+    } else if (rangeQuery === "3m" || rangeQuery === "90d") {
+      daysBack = 90
+      sinceDate.setMonth(sinceDate.getMonth() - 3)
+    } else if (rangeQuery === "1y" || rangeQuery === "12m" || rangeQuery === "365d") {
+      daysBack = 365
+      sinceDate.setFullYear(sinceDate.getFullYear() - 1)
+    } else {
+      // Default to 30d
+      daysBack = 30
+      sinceDate.setDate(sinceDate.getDate() - 30)
+    }
     sinceDate.setHours(0, 0, 0, 0)
 
-    // Fetch employee's completed assessments within range, sorted ascending by completedAt
-    const rawAssessments = await Assessment.find({
-      userId: user._id,
-      completedAt: { $gte: sinceDate },
-      status: "Completed",
-    }).sort({ completedAt: 1 })
+    // Source of truth: user.msi array
+    const msiArray = Array.isArray(user.msi) ? user.msi : []
 
-    // Map to required structure: { date: "YYYY-MM-DD", msi: number, id, category, type }
-    const assessments = rawAssessments.map((a) => {
-      const d = new Date(a.completedAt)
-      const dateStr = d.toISOString().split("T")[0]
-      return {
-        id: a._id,
-        date: dateStr,
-        timestamp: a.completedAt,
-        msi: a.msi,
-        category: a.category,
-        type: a.type,
-        driver: a.driver,
-      }
+    // Map all valid items from user.msi safely
+    const allMsiMapped = msiArray
+      .filter((item) => item && typeof item.score === "number")
+      .map((item, index) => {
+        let recorded = item.recordedAt ? new Date(item.recordedAt) : null
+        if (!recorded || isNaN(recorded.getTime())) {
+          recorded = new Date()
+        }
+        const dateStr = recorded.toISOString().split("T")[0]
+        return {
+          id: item._id ? String(item._id) : `msi-${index}`,
+          date: dateStr,
+          timestamp: item.recordedAt || recorded.toISOString(),
+          msi: item.score,
+          score: item.score,
+          type: item.type || "weekly",
+          category: getCategory(item.score),
+        }
+      })
+
+    // Filter by requested time horizon (7D, 30D, 3M, 1Y)
+    const filteredAssessments = allMsiMapped.filter((item) => {
+      const t = new Date(item.timestamp).getTime()
+      return !isNaN(t) && t >= sinceDate.getTime()
     })
 
-    // Fetch all-time completed assessments for accurate 'usual range' and latest currentMsi
-    const allAssessments = await Assessment.find({
-      userId: user._id,
-      status: "Completed",
-    }).sort({ completedAt: -1 })
+    // Sort chronologically ascending
+    filteredAssessments.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
 
-    const latestAssessment = allAssessments[0] || null
-    const currentMsi = latestAssessment ? latestAssessment.msi : null
-    const baselineMsi = user.baselineMsi ?? null
+    // Baseline item: where type === "baseline" (initial MSI assessment)
+    const baselineItem = msiArray.find((item) => item && item.type === "baseline")
+    const baselineScore = baselineItem ? baselineItem.score : (user.baselineMsi ?? null)
+    const baselineObj = baselineItem
+      ? {
+          score: baselineItem.score,
+          recordedAt: baselineItem.recordedAt || null,
+        }
+      : baselineScore != null
+      ? {
+          score: baselineScore,
+          recordedAt: user.baselineCompletedAt || null,
+        }
+      : null
 
-    // Calculate Usual Range:
-    // If >= 3 completed assessments exist, calculate 25th to 75th percentile (interquartile range) or mean +/- 0.75 SD.
-    // If < 3 assessments, return null (insufficient data).
+    // Current MSI: MUST always be the latest valid MSI value across the entire MSI history, regardless of selected range filter
+    const sortedValidAll = allMsiMapped
+      .filter((item) => item.score != null)
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+    const latestItem = sortedValidAll.length > 0 ? sortedValidAll[sortedValidAll.length - 1] : null
+    const currentMsi = latestItem ? latestItem.score : baselineScore
+    const latestScore = currentMsi
+
+    // Calculate Usual Range from historical WEEKLY MSI values (excluding baseline)
+    const weeklyMsiItems = allMsiMapped.filter((item) => item.type !== "baseline")
     let usualRange = null
-    if (allAssessments.length >= 3) {
-      const msiValues = allAssessments.map((a) => a.msi).sort((a, b) => a - b)
+    if (weeklyMsiItems.length >= 3) {
+      const msiValues = weeklyMsiItems.map((a) => a.score).sort((a, b) => a - b)
       const q1Index = Math.floor(msiValues.length * 0.25)
       const q3Index = Math.floor(msiValues.length * 0.75)
       const lower = msiValues[q1Index]
@@ -559,25 +670,26 @@ router.get("/history", requireActiveEmployee, async (req, res) => {
 
     // Generate Dynamic Observations based on real assessment history
     const observations = []
-    if (allAssessments.length < 2) {
+    if (allMsiMapped.length < 2) {
       observations.push("Complete a few more check-ins to build a clearer picture of your stress patterns.")
     } else {
-      // 1. Trend across recent check-ins
-      const recent3 = allAssessments.slice(0, 3)
+      // 1. Trend across recent check-ins (from latest backwards)
+      const reversedAll = [...allMsiMapped].reverse()
+      const recent3 = reversedAll.slice(0, 3)
       if (recent3.length >= 3) {
         const [first, second, third] = recent3 // first is latest, third is oldest of the 3
-        if (first.msi > second.msi && second.msi > third.msi) {
+        if (first.score > second.score && second.score > third.score) {
           observations.push("MSI has increased across your last 3 check-ins.")
-        } else if (first.msi < second.msi && second.msi < third.msi) {
+        } else if (first.score < second.score && second.score < third.score) {
           observations.push("MSI has steadily decreased across your last 3 check-ins.")
         }
       }
 
       // 2. Comparison to baseline
-      if (baselineMsi != null && currentMsi != null) {
-        if (currentMsi > baselineMsi + 10) {
+      if (baselineScore != null && currentMsi != null) {
+        if (currentMsi > baselineScore + 10) {
           observations.push("Recent check-ins are running noticeably higher than your baseline.")
-        } else if (currentMsi < baselineMsi - 10) {
+        } else if (currentMsi < baselineScore - 10) {
           observations.push("Recent check-ins are running comfortably below your baseline.")
         } else {
           observations.push("Your MSI is currently tracking close to your established baseline.")
@@ -585,22 +697,11 @@ router.get("/history", requireActiveEmployee, async (req, res) => {
       }
 
       // 3. Elevated frequency in the filtered period
-      const elevatedInPeriod = assessments.filter((a) => a.msi > 40)
+      const elevatedInPeriod = filteredAssessments.filter((a) => a.score > 40)
       if (elevatedInPeriod.length >= 3) {
         observations.push("Elevated scores have appeared repeatedly during this period.")
-      } else if (elevatedInPeriod.length === 0 && assessments.length >= 3) {
+      } else if (elevatedInPeriod.length === 0 && filteredAssessments.length >= 3) {
         observations.push("Your stress levels have remained smoothly within range throughout this period.")
-      }
-
-      // 4. Driver pattern if available
-      const drivers = allAssessments.map((a) => a.driver).filter(Boolean)
-      if (drivers.length >= 2) {
-        const counts = {}
-        for (const d of drivers) counts[d] = (counts[d] || 0) + 1
-        const topDriver = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]
-        if (topDriver && topDriver[1] >= 2) {
-          observations.push(`${topDriver[0]} has been your most frequently noted contributor.`)
-        }
       }
 
       if (observations.length === 0) {
@@ -612,16 +713,19 @@ router.get("/history", requireActiveEmployee, async (req, res) => {
       success: true,
       range: rangeQuery,
       days: daysBack,
-      count: assessments.length,
-      assessments, // Formatted as array of { date, msi, ... }
+      baseline: baselineObj,
+      history: filteredAssessments,
+      latest: latestScore,
+      count: filteredAssessments.length,
+      assessments: filteredAssessments, // Formatted as array of { date, msi, score, type, ... }
       currentMsi,
-      baselineMsi,
+      baselineMsi: baselineScore,
       usualRange: usualRange ? usualRange.formatted : "Not enough data",
       observations: observations.slice(0, 3),
-      data: rawAssessments, // Maintain backward compatibility if any legacy consumer looks at data
+      data: filteredAssessments,
     })
   } catch (err) {
-    console.error("[ASSESSMENT] Error fetching assessment history:", err.message)
+    console.error("[ASSESSMENT] Error fetching assessment history:", err)
     res.status(500).json({ success: false, message: "Unable to fetch assessment history." })
   }
 })

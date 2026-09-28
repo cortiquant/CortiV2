@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom"
 import logoSrc from "@/imports/image-2.png"
 
 interface LandingProps {
@@ -376,6 +377,14 @@ export default function Landing({ onGetStarted }: LandingProps) {
               </div>
             ))}
           </div>
+          <div className="mt-8 text-center">
+            <Link
+              to="/privacy-policy"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-purple-core hover:text-lavender-bright transition-colors"
+            >
+              Read full Privacy Policy →
+            </Link>
+          </div>
         </div>
       </section>
 
@@ -435,16 +444,25 @@ export default function Landing({ onGetStarted }: LandingProps) {
         <div className="max-w-5xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-4">
           <img src={logoSrc} alt="CortiQuant" className="h-7 object-contain" />
           <p className="text-xs text-text-muted italic">Turning Invisible Stress into Actionable Insight</p>
-          <div className="flex gap-6">
-            {["Privacy", "Terms", "Contact"].map((l) => (
-              <button
-                key={l}
-                onClick={() => l === "Privacy" ? scrollTo("privacy") : undefined}
-                className="text-xs text-text-muted hover:text-text-secondary transition-colors"
-              >
-                {l}
-              </button>
-            ))}
+          <div className="flex gap-6 items-center">
+            <Link
+              to="/privacy-policy"
+              className="text-xs text-text-muted hover:text-warm-white transition-colors cursor-pointer"
+            >
+              Privacy
+            </Link>
+            <Link
+              to="/terms"
+              className="text-xs text-text-muted hover:text-warm-white transition-colors cursor-pointer"
+            >
+              Terms
+            </Link>
+            <Link
+              to="/contact"
+              className="text-xs text-text-muted hover:text-warm-white transition-colors cursor-pointer"
+            >
+              Contact
+            </Link>
           </div>
         </div>
       </footer>

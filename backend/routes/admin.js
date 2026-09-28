@@ -952,28 +952,28 @@ router.get("/employees", requireAdmin, async (req, res) => {
       .select("-passwordHash")
       .sort({ createdAt: -1 })
 
-    // Auto-cure any Active/Approved employees who are missing an employeeId
-    const { generateOrgEmployeeId } = require("../services/employeeIdService")
+    // Auto-cure any Active/Approved employees who are missing an employeeId or have invalid prefix
+    const { generateOrgEmployeeId, isValidOrgEmployeeId } = require("../services/employeeIdService")
+    const orgs = await Organisation.find({})
+    const orgMapById = new Map(orgs.map((o) => [String(o._id), o]))
+    const orgMapByCQ = new Map(orgs.map((o) => [o.organisationId, o]))
+
     for (const emp of employees) {
       const isApprovedOrActive = emp.status === "Approved" || emp.status === "Active"
-      const lacksId = !emp.employeeId || emp.employeeId === "Pending ID" || emp.employeeId === "pending"
-      if (isApprovedOrActive && lacksId) {
+      const org = orgMapById.get(String(emp.organisationId)) || orgMapByCQ.get(String(emp.organisationId)) || null
+      const lacksValidId = !org || !isValidOrgEmployeeId(emp.employeeId, org)
+      if (isApprovedOrActive && lacksValidId) {
         try {
           const generatedId = await generateOrgEmployeeId(emp.organisationId)
           emp.employeeId = generatedId
           if (!emp.approvedAt) emp.approvedAt = emp.createdAt || new Date()
           await emp.save()
-          console.log(`[ADMIN EMPLOYEES] Auto-assigned missing employeeId for ${emp.name}: ${generatedId}`)
+          console.log(`[ADMIN EMPLOYEES] Auto-assigned missing/corrected employeeId for ${emp.name}: ${generatedId}`)
         } catch (genErr) {
           console.error(`[ADMIN EMPLOYEES] Error auto-generating employeeId for ${emp._id}:`, genErr.message)
         }
       }
     }
-
-    // 2. Fetch all organisations to map names and codes
-    const orgs = await Organisation.find({})
-    const orgMapById = new Map(orgs.map((o) => [String(o._id), o]))
-    const orgMapByCQ = new Map(orgs.map((o) => [o.organisationId, o]))
 
     // 3. Fetch corporate onboarding records for all retrieved employees
     const employeeUserIds = employees.map((e) => e._id)
@@ -1170,6 +1170,12 @@ router.get("/assessments", requireAdmin, async (req, res) => {
 
       const dateStr = record.completedAt || record.createdAt
 
+      // Display baseline array item as 'Baseline MSI' and weekly array item as 'Current MSI' or 'Weekly MSI'
+      let displayType = record.type || "Daily Check-in (MSI)"
+      if (displayType === "Daily Check-in (MSI)") {
+        displayType = "Current MSI"
+      }
+
       normalizedList.push({
         id: String(record._id),
         recordId: record._id,
@@ -1179,7 +1185,7 @@ router.get("/assessments", requireAdmin, async (req, res) => {
         organisationId: orgId,
         organisationName: orgName,
         organisationCode: orgCode,
-        type: record.type || "Daily Check-in (MSI)",
+        type: displayType,
         score: Math.round(record.msi),
         scoreDisplay: String(Math.round(record.msi)),
         date: dateStr,
@@ -1294,13 +1300,88 @@ router.get("/assessments/:id", requireAdmin, async (req, res) => {
       return res.status(404).json({ success: false, message: "Assessment record not found." })
     }
 
-    const record = await CorporateOnboarding.findById(rawId).populate(
+    let record = null
+    let isFromAssessmentModel = false
+    let isFromUserMsiArray = false
+    let matchedUser = null
+    let matchedMsiItem = null
+
+    // First check Assessment collection (Daily Check-in, Baseline MSI, Weekly MSI)
+    const assessmentModelDoc = await Assessment.findById(rawId).populate(
       "userId",
       "name email employeeId status"
     )
 
-    if (!record || !record.userId) {
+    if (assessmentModelDoc) {
+      record = assessmentModelDoc
+      isFromAssessmentModel = true
+    } else {
+      // Second check legacy CorporateOnboarding record
+      record = await CorporateOnboarding.findById(rawId).populate(
+        "userId",
+        "name email employeeId status"
+      )
+
+      if (!record) {
+        // Third check: look up user whose msi array contains this subdocument _id
+        matchedUser = await User.findOne({ "msi._id": rawId }).populate("organisationId")
+        if (matchedUser) {
+          matchedMsiItem = matchedUser.msi.id(rawId)
+          if (matchedMsiItem) {
+            isFromUserMsiArray = true
+          }
+        }
+      }
+    }
+
+    if (!record && !isFromUserMsiArray) {
       return res.status(404).json({ success: false, message: "Assessment record not found." })
+    }
+
+    if (isFromUserMsiArray && matchedUser && matchedMsiItem) {
+      const org = await Organisation.findOne({
+        $or: [
+          { _id: mongoose.isValidObjectId(matchedUser.organisationId) ? matchedUser.organisationId : null },
+          { organisationId: matchedUser.organisationId },
+        ],
+      })
+
+      const orgName = org ? org.name : "Unassigned Organisation"
+      const orgId = org ? org.organisationId : String(matchedUser.organisationId || "")
+      const orgCode = org ? org.organisationCode : (matchedUser.organisationCode || "")
+      const displayType = matchedMsiItem.type === "baseline" ? "Baseline MSI" : "Current MSI"
+      const dateStr = matchedMsiItem.recordedAt || matchedMsiItem.createdAt || new Date()
+
+      return res.status(200).json({
+        success: true,
+        assessment: {
+          id: String(matchedMsiItem._id),
+          recordId: matchedMsiItem._id,
+          employee: {
+            employeeId: matchedUser.employeeId || "Pending ID",
+            name: matchedUser.name,
+            email: matchedUser.email,
+          },
+          organisation: {
+            organisationId: orgId,
+            name: orgName,
+            organisationCode: orgCode,
+          },
+          type: displayType,
+          score: Math.round(matchedMsiItem.score),
+          scoreDisplay: String(Math.round(matchedMsiItem.score)),
+          status: "Completed",
+          completedAt: dateStr,
+          createdAt: dateStr,
+          updatedAt: dateStr,
+          scores: {
+            msi: Math.round(matchedMsiItem.score),
+            moodScore: null,
+            psychometricScore: null,
+            physicalScore: null,
+          },
+        },
+      })
     }
 
     const org = await Organisation.findOne({
@@ -1310,11 +1391,44 @@ router.get("/assessments/:id", requireAdmin, async (req, res) => {
       ],
     })
 
-    const user = record.userId
+    const user = record.userId || {}
     const orgName = org ? org.name : "Unassigned Organisation"
     const orgId = org ? org.organisationId : String(record.organisationId || "")
     const orgCode = org ? org.organisationCode : ""
     const dateStr = record.completedAt || record.createdAt
+
+    if (isFromAssessmentModel) {
+      return res.status(200).json({
+        success: true,
+        assessment: {
+          id: String(record._id),
+          recordId: record._id,
+          employee: {
+            employeeId: user.employeeId || record.employeeId || "Pending ID",
+            name: user.name,
+            email: user.email,
+          },
+          organisation: {
+            organisationId: orgId,
+            name: orgName,
+            organisationCode: orgCode,
+          },
+          type: record.type || "Daily Check-in (MSI)",
+          score: Math.round(record.msi),
+          scoreDisplay: String(Math.round(record.msi)),
+          status: record.status || "Completed",
+          completedAt: dateStr,
+          createdAt: record.createdAt,
+          updatedAt: record.updatedAt,
+          scores: record.scores || {
+            msi: Math.round(record.msi),
+            moodScore: null,
+            psychometricScore: null,
+            physicalScore: null,
+          },
+        },
+      })
+    }
 
     const isArchetype = subType === "Archetype"
 

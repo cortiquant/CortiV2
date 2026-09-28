@@ -30,7 +30,7 @@ const AssessmentSchema = new mongoose.Schema(
     type: {
       type: String,
       default: "Daily Check-in (MSI)",
-      enum: ["Daily Check-in (MSI)", "Baseline MSI", "Psychometric", "Behavioral", "Archetype"],
+      enum: ["Daily Check-in (MSI)", "Baseline MSI", "Weekly MSI", "Current MSI", "Psychometric", "Behavioral", "Archetype"],
     },
 
     // Daily Check-in responses
