@@ -2,6 +2,7 @@ const express = require("express")
 const router = express.Router()
 const mongoose = require("mongoose")
 const jwt = require("jsonwebtoken")
+const crypto = require("crypto")
 const User = require("../models/User")
 const Organisation = require("../models/Organisation")
 const { logActivity } = require("../services/activityService")
@@ -115,6 +116,293 @@ router.post("/verify-organisation-code", async (req, res) => {
       success: false,
       message: "Server error during organisation verification.",
     })
+  }
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/auth/signup
+//
+// Public — B2C individual user signup. No organisation code, employeeId, or HR approval.
+// Creates account with role "employee" and status "Active".
+// Returns token & user so user can proceed directly into personal CortiQuant onboarding/baseline.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post("/signup", async (req, res) => {
+  try {
+    const { name, username, email, password, privacyConsent, participantConsent } = req.body
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, message: "Full Name is required." })
+    }
+    if (!username || !username.trim()) {
+      return res.status(400).json({ success: false, message: "Username is required." })
+    }
+    if (!email || !email.trim()) {
+      return res.status(400).json({ success: false, message: "Email address is required." })
+    }
+    if (!password) {
+      return res.status(400).json({ success: false, message: "Password is required." })
+    }
+
+    if (!privacyConsent || !participantConsent) {
+      return res.status(400).json({
+        success: false,
+        message: "You must agree to both the Privacy Policy and Participant Consent Form.",
+      })
+    }
+
+    const cleanUsername = username.trim().toLowerCase()
+    if (cleanUsername.length < 3 || cleanUsername.length > 30) {
+      return res.status(400).json({
+        success: false,
+        message: "Username must be between 3 and 30 characters.",
+      })
+    }
+    if (!/^[a-z0-9._-]+$/.test(cleanUsername)) {
+      return res.status(400).json({
+        success: false,
+        message: "Username can only contain letters, numbers, periods, hyphens, and underscores.",
+      })
+    }
+
+    const cleanEmail = email.trim().toLowerCase()
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(cleanEmail)) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide a valid email address.",
+      })
+    }
+
+    const pwRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/
+    if (!pwRegex.test(password)) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 8 characters and include uppercase, lowercase, and a number.",
+      })
+    }
+
+    // Check duplicate username
+    const existingUser = await User.findOne({
+      username: new RegExp(`^${cleanUsername}$`, "i"),
+    })
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        message: "An account with this username already exists. Please choose another.",
+      })
+    }
+
+    // Check duplicate email
+    const existingEmail = await User.findOne({ email: cleanEmail })
+    if (existingEmail) {
+      return res.status(409).json({
+        success: false,
+        message: "An account with this email address already exists. Please sign in instead.",
+      })
+    }
+
+    const passwordHash = await User.hashPassword(password)
+    const now = new Date()
+
+    const user = await User.create({
+      name: name.trim(),
+      username: cleanUsername,
+      email: cleanEmail,
+      passwordHash,
+      role: "employee",
+      status: "Active", // B2C users are immediately Active (no HR approval needed)
+      organisationId: null,
+      organisationCode: null,
+      employeeId: null,
+      onboardingCompleted: true,
+      profileCompleted: false, // New B2C user must complete profile
+      privacyConsent: true,
+      privacyConsentAt: now,
+      participantConsent: true,
+      participantConsentAt: now,
+    })
+
+    console.log(`[AUTH] B2C user signup successful: ${user.username} (${user.email})`)
+
+    const token = signToken(user._id, {
+      role: "employee",
+      organisationId: null,
+    })
+
+    return res.status(201).json({
+      success: true,
+      message: "Account created successfully.",
+      user: user.toSafeObject(),
+      token,
+    })
+  } catch (err) {
+    console.error("[AUTH] B2C signup error:", err.message)
+    if (err.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "An account with this username or email already exists.",
+      })
+    }
+    return res.status(500).json({ success: false, message: "Server error during account creation." })
+  }
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/auth/forgot-password
+//
+// Public — Request a password reset link using email.
+// Generates a secure random reset token, stores its SHA-256 hash with 1 hour expiration,
+// emails the reset link to the user, and returns only a generic success response.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post("/forgot-password", async (req, res) => {
+  try {
+    const { email, identifier } = req.body
+    const cleanEmail = (email || identifier || "").trim()
+
+    if (!cleanEmail) {
+      return res.status(400).json({
+        success: false,
+        message: "Please enter your registered email address.",
+      })
+    }
+
+    const user = await User.findOne({
+      $or: [
+        { email: cleanEmail.toLowerCase() },
+        { username: new RegExp(`^${cleanEmail}$`, "i") },
+      ],
+    })
+
+    // Generic response regardless of whether user exists to prevent account enumeration
+    const genericSuccessResponse = {
+      success: true,
+      message: "If an account exists with this email address, we've sent you a password reset link.",
+    }
+
+    if (!user || !user.email) {
+      return res.status(200).json(genericSuccessResponse)
+    }
+
+    // Generate secure random reset token (48 chars hex)
+    const resetToken = crypto.randomBytes(24).toString("hex")
+    const hashedToken = crypto.createHash("sha256").update(resetToken).digest("hex")
+
+    user.resetPasswordToken = hashedToken
+    user.resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000) // 1 hour validity
+    await user.save()
+
+    // Send reset email with secure URL containing rawToken
+    const { sendPasswordResetEmail } = require("../services/passwordResetService")
+    await sendPasswordResetEmail({
+      to: user.email,
+      userName: user.name || user.username,
+      rawToken: resetToken,
+    })
+
+    return res.status(200).json(genericSuccessResponse)
+  } catch (err) {
+    console.error("[AUTH] Forgot password error:", err.message)
+    return res.status(500).json({
+      success: false,
+      message: "An error occurred while processing your request. Please try again.",
+    })
+  }
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/auth/validate-reset-token
+//
+// Public — Validates that a password reset token exists, is valid, and has not expired.
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/validate-reset-token", async (req, res) => {
+  try {
+    const { token } = req.query
+    if (!token || typeof token !== "string" || !token.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Reset link is invalid or missing.",
+      })
+    }
+
+    const hashedToken = crypto.createHash("sha256").update(token.trim()).digest("hex")
+
+    const user = await User.findOne({
+      resetPasswordToken: hashedToken,
+      resetPasswordExpires: { $gt: new Date() },
+    }).select("_id email username")
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "Reset link expired or invalid.",
+      })
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Token is valid.",
+    })
+  } catch (err) {
+    console.error("[AUTH] Validate reset token error:", err.message)
+    return res.status(500).json({
+      success: false,
+      message: "Server error validating reset link.",
+    })
+  }
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/auth/reset-password
+//
+// Public — Set a new password using the reset token from the email link.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post("/reset-password", async (req, res) => {
+  try {
+    const { token, newPassword } = req.body
+
+    if (!token || !token.trim()) {
+      return res.status(400).json({ success: false, message: "Reset token is required." })
+    }
+    if (!newPassword) {
+      return res.status(400).json({ success: false, message: "New password is required." })
+    }
+
+    const pwRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/
+    if (!pwRegex.test(newPassword)) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 8 characters and include uppercase, lowercase, and a number.",
+      })
+    }
+
+    const hashedToken = crypto.createHash("sha256").update(token.trim()).digest("hex")
+
+    const user = await User.findOne({
+      resetPasswordToken: hashedToken,
+      resetPasswordExpires: { $gt: new Date() },
+    }).select("+passwordHash +resetPasswordToken +resetPasswordExpires")
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "Reset link expired or invalid. Please request a new one.",
+      })
+    }
+
+    user.passwordHash = await User.hashPassword(newPassword)
+    user.resetPasswordToken = undefined
+    user.resetPasswordExpires = undefined
+    await user.save()
+
+    console.log(`[AUTH] Password reset successfully for user: ${user.username || user.email}`)
+
+    return res.status(200).json({
+      success: true,
+      message: "Password updated successfully.",
+    })
+  } catch (err) {
+    console.error("[AUTH] Reset password error:", err.message)
+    return res.status(500).json({ success: false, message: "Server error resetting password." })
   }
 })
 
@@ -789,12 +1077,37 @@ async function handleHRQueue(req, res) {
 
     // HR org can be ObjectId or string ID
     const hrOrgId = req.user.organisationId
-    const baseOrgFilter = {
-      role: { $in: ["employee", "Employee", "EMPLOYEE"] },
+
+    // Lookup organisation details first
+    const orgDoc = await Organisation.findOne({
       $or: [
+        { _id: mongoose.isValidObjectId(hrOrgId) ? hrOrgId : null },
         { organisationId: hrOrgId },
         { organisationId: String(hrOrgId) },
-        ...(mongoose.isValidObjectId(hrOrgId) ? [{ organisationId: new mongoose.Types.ObjectId(hrOrgId) }] : []),
+      ],
+    })
+    const orgName = orgDoc ? orgDoc.name : "Organisation"
+
+    // Match all representations of this organisation: ObjectId, string ObjectId, organisationId code, organisationCode
+    const orgIds = [
+      hrOrgId,
+      String(hrOrgId),
+      ...(mongoose.isValidObjectId(hrOrgId) ? [new mongoose.Types.ObjectId(hrOrgId)] : []),
+      ...(orgDoc ? [
+        orgDoc._id,
+        String(orgDoc._id),
+        ...(mongoose.isValidObjectId(orgDoc._id) ? [new mongoose.Types.ObjectId(orgDoc._id)] : []),
+        orgDoc.organisationId,
+        String(orgDoc.organisationId),
+      ] : []),
+    ]
+    const orgCodes = orgDoc ? [orgDoc.organisationCode, orgDoc.code].filter(Boolean) : []
+
+    const baseOrgFilter = {
+      role: { $in: ["employee", "Employee", "EMPLOYEE", "user", "User", "USER"] },
+      $or: [
+        { organisationId: { $in: orgIds } },
+        ...(orgCodes.length > 0 ? [{ organisationCode: { $in: orgCodes } }] : []),
       ],
     }
 
@@ -819,15 +1132,6 @@ async function handleHRQueue(req, res) {
     const CorporateOnboarding = require("../models/CorporateOnboarding")
     const onbRecords = await CorporateOnboarding.find({ userId: { $in: userIds } })
     const onbMap = new Map(onbRecords.map((o) => [String(o.userId), o]))
-
-    // Lookup organisation details for name
-    const orgDoc = await Organisation.findOne({
-      $or: [
-        { _id: mongoose.isValidObjectId(hrOrgId) ? hrOrgId : null },
-        { organisationId: hrOrgId },
-      ],
-    })
-    const orgName = orgDoc ? orgDoc.name : "Organisation"
 
     // ── Calculate Real Org KPIs ─────────────────────────────────────────────
     const todayStart = new Date()
@@ -936,7 +1240,7 @@ async function handleApproveEmployee(req, res) {
     // Find by ObjectId or employeeId
     const isObjId = mongoose.isValidObjectId(idParam)
     const employee = await User.findOne({
-      role: { $in: ["employee", "Employee", "EMPLOYEE"] },
+      role: { $in: ["employee", "Employee", "EMPLOYEE", "user", "User", "USER"] },
       $or: [
         ...(isObjId ? [{ _id: idParam }] : []),
         { employeeId: idParam },
@@ -948,14 +1252,28 @@ async function handleApproveEmployee(req, res) {
     }
 
     // ── Cross-org protection ──────────────────────────────────────────────
-    const empOrg = String(employee.organisationId)
-    const hrOrg = String(req.user.organisationId)
-    if (empOrg !== hrOrg) {
+    const hrOrgDoc = await Organisation.findOne({
+      $or: [
+        { _id: mongoose.isValidObjectId(req.user.organisationId) ? req.user.organisationId : null },
+        { organisationId: req.user.organisationId },
+        { organisationId: String(req.user.organisationId) },
+      ],
+    })
+    const isSameOrg = (
+      String(employee.organisationId) === String(req.user.organisationId) ||
+      (hrOrgDoc && (
+        String(employee.organisationId) === String(hrOrgDoc._id) ||
+        String(employee.organisationId) === String(hrOrgDoc.organisationId) ||
+        employee.organisationCode === hrOrgDoc.organisationCode
+      ))
+    )
+    if (!isSameOrg) {
       return res.status(403).json({ success: false, message: "Access denied: cross-organisation action." })
     }
 
     // Find organisation to strictly validate prefix
-    const org = await Organisation.findById(employee.organisationId) ||
+    const org = hrOrgDoc ||
+      await Organisation.findById(employee.organisationId) ||
       await Organisation.findOne({
         $or: [
           { organisationId: employee.organisationId },
@@ -981,7 +1299,33 @@ async function handleApproveEmployee(req, res) {
     }
     employee.rejectedAt = null
     employee.rejectedBy = null
-    employee.rejectionReason = null
+    // Ensure organisation relationship is canonical
+    if (org) {
+      employee.organisationId = org._id
+      employee.organisationCode = org.organisationCode || org.code
+    }
+
+    // Persist the approved membership status on organisationLink
+    if (!employee.organisationLink) {
+      employee.organisationLink = {}
+    }
+    employee.organisationLink.status = "approved"
+    employee.organisationLink.approvedAt = employee.approvedAt || new Date()
+    employee.organisationLink.rejectedAt = null
+    employee.organisationLink.rejectionReason = null
+    if (org) {
+      employee.organisationLink.organisationId = String(org._id)
+      employee.organisationLink.organisationName = org.name
+      employee.organisationLink.organisationCode = org.organisationCode || org.code
+    }
+    // Preserve selected department, working hours and work type
+    if (employee.department && !employee.organisationLink.department) {
+      employee.organisationLink.department = employee.department
+    } else if (employee.organisationLink.department && !employee.department) {
+      employee.department = employee.organisationLink.department
+    }
+
+    employee.markModified("organisationLink")
     await employee.save()
 
     console.log(`[AUTH] HR approved employee: ${employee.username || employee.email} → ${employeeId}`)
@@ -1028,7 +1372,7 @@ async function handleRejectEmployee(req, res) {
 
     const isObjId = mongoose.isValidObjectId(idParam)
     const employee = await User.findOne({
-      role: { $in: ["employee", "Employee", "EMPLOYEE"] },
+      role: { $in: ["employee", "Employee", "EMPLOYEE", "user", "User", "USER"] },
       $or: [
         ...(isObjId ? [{ _id: idParam }] : []),
         { employeeId: idParam },
@@ -1039,9 +1383,23 @@ async function handleRejectEmployee(req, res) {
       return res.status(404).json({ success: false, message: "Employee not found." })
     }
 
-    const empOrg = String(employee.organisationId)
-    const hrOrg = String(req.user.organisationId)
-    if (empOrg !== hrOrg) {
+    // ── Cross-org protection ──────────────────────────────────────────────
+    const hrOrgDoc = await Organisation.findOne({
+      $or: [
+        { _id: mongoose.isValidObjectId(req.user.organisationId) ? req.user.organisationId : null },
+        { organisationId: req.user.organisationId },
+        { organisationId: String(req.user.organisationId) },
+      ],
+    })
+    const isSameOrg = (
+      String(employee.organisationId) === String(req.user.organisationId) ||
+      (hrOrgDoc && (
+        String(employee.organisationId) === String(hrOrgDoc._id) ||
+        String(employee.organisationId) === String(hrOrgDoc.organisationId) ||
+        employee.organisationCode === hrOrgDoc.organisationCode
+      ))
+    )
+    if (!isSameOrg) {
       return res.status(403).json({ success: false, message: "Access denied: cross-organisation action." })
     }
 
@@ -1051,6 +1409,16 @@ async function handleRejectEmployee(req, res) {
     if (reason) {
       employee.rejectionReason = String(reason).trim()
     }
+
+    // Update B2C organisationLink state if present
+    if (!employee.organisationLink) {
+      employee.organisationLink = {}
+    }
+    employee.organisationLink.status = "rejected"
+    employee.organisationLink.rejectedAt = new Date()
+    employee.organisationLink.rejectionReason = reason ? String(reason).trim() : null
+    employee.markModified("organisationLink")
+
     await employee.save()
 
     console.log(`[AUTH] HR rejected employee: ${employee.username || employee.email}${reason ? ` (Reason: ${reason})` : ""}`)

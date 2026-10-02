@@ -942,13 +942,57 @@ router.post("/email/test", requireAdmin, async (req, res) => {
 // - Department (from participantProfile.D3 if completed)
 // - Onboarding status ("Complete", "Pending", or "Not Started")
 // - Latest assessment MSI and Archetype
+// Reusable queries for separating approved organisation employees from B2C users
+const getApprovedEmployeeQuery = () => ({
+  role: { $in: ["employee", "Employee", "user", "User"] },
+  $or: [
+    { "organisationLink.status": "approved" },
+    {
+      $and: [
+        { status: { $in: ["Active", "Approved"] } },
+        { employeeId: { $exists: true, $nin: [null, "", "Pending ID"] } },
+        {
+          $or: [
+            { organisationId: { $exists: true, $nin: [null, ""] } },
+            { organisationCode: { $exists: true, $nin: [null, ""] } },
+          ],
+        },
+        { status: { $nin: ["PendingApproval", "Rejected"] } },
+      ],
+    },
+  ],
+})
+
+const getB2CUserQuery = () => ({
+  role: { $in: ["employee", "Employee", "user", "User"] },
+  $nor: [
+    { "organisationLink.status": "approved" },
+    {
+      $and: [
+        { status: { $in: ["Active", "Approved"] } },
+        { employeeId: { $exists: true, $nin: [null, "", "Pending ID"] } },
+        {
+          $or: [
+            { organisationId: { $exists: true, $nin: [null, ""] } },
+            { organisationCode: { $exists: true, $nin: [null, ""] } },
+          ],
+        },
+        { status: { $nin: ["PendingApproval", "Rejected"] } },
+      ],
+    },
+  ],
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/admin/employees
+//
+// Admin/Founder-protected - returns ONLY organisation-connected approved employees.
+// Pure B2C users, pending org requests, and rejected requests are strictly excluded.
 // ─────────────────────────────────────────────────────────────────────────────
 router.get("/employees", requireAdmin, async (req, res) => {
   try {
-    // 1. Fetch all employees across all organisations
-    const employees = await User.find({
-      role: { $in: ["employee", "Employee"] },
-    })
+    // 1. Fetch only approved employees with actual organisation relationship
+    const employees = await User.find(getApprovedEmployeeQuery())
       .select("-passwordHash")
       .sort({ createdAt: -1 })
 
@@ -957,21 +1001,48 @@ router.get("/employees", requireAdmin, async (req, res) => {
     const orgs = await Organisation.find({})
     const orgMapById = new Map(orgs.map((o) => [String(o._id), o]))
     const orgMapByCQ = new Map(orgs.map((o) => [o.organisationId, o]))
+    const orgMapByCode = new Map(orgs.map((o) => [o.organisationCode, o]))
 
     for (const emp of employees) {
       const isApprovedOrActive = emp.status === "Approved" || emp.status === "Active"
-      const org = orgMapById.get(String(emp.organisationId)) || orgMapByCQ.get(String(emp.organisationId)) || null
-      const lacksValidId = !org || !isValidOrgEmployeeId(emp.employeeId, org)
-      if (isApprovedOrActive && lacksValidId) {
+      const targetOrg =
+        orgMapById.get(String(emp.organisationId)) ||
+        orgMapByCQ.get(String(emp.organisationId)) ||
+        orgMapByCode.get(emp.organisationCode) ||
+        null
+      const lacksValidId = !targetOrg || !isValidOrgEmployeeId(emp.employeeId, targetOrg)
+      let needsSave = false
+      if (isApprovedOrActive && lacksValidId && emp.organisationId) {
         try {
           const generatedId = await generateOrgEmployeeId(emp.organisationId)
           emp.employeeId = generatedId
           if (!emp.approvedAt) emp.approvedAt = emp.createdAt || new Date()
-          await emp.save()
+          needsSave = true
           console.log(`[ADMIN EMPLOYEES] Auto-assigned missing/corrected employeeId for ${emp.name}: ${generatedId}`)
         } catch (genErr) {
           console.error(`[ADMIN EMPLOYEES] Error auto-generating employeeId for ${emp._id}:`, genErr.message)
         }
+      }
+
+      // Auto-heal organisationLink if user is an approved employee
+      if (emp.organisationLink && emp.organisationLink.status !== "approved" && emp.employeeId && (emp.status === "Active" || emp.status === "Approved")) {
+        emp.organisationLink.status = "approved"
+        emp.organisationLink.approvedAt = emp.approvedAt || emp.createdAt || new Date()
+        emp.organisationLink.rejectedAt = null
+        emp.organisationLink.rejectionReason = null
+        if (targetOrg) {
+          emp.organisationLink.organisationName = targetOrg.name
+          emp.organisationLink.organisationCode = targetOrg.organisationCode || targetOrg.code
+        }
+        if (emp.department && !emp.organisationLink.department) {
+          emp.organisationLink.department = emp.department
+        }
+        emp.markModified("organisationLink")
+        needsSave = true
+      }
+
+      if (needsSave) {
+        await emp.save().catch((err) => console.warn(`[ADMIN EMPLOYEES] Save warning for ${emp._id}:`, err.message))
       }
     }
 
@@ -987,6 +1058,7 @@ router.get("/employees", requireAdmin, async (req, res) => {
       const org =
         orgMapById.get(String(emp.organisationId)) ||
         orgMapByCQ.get(String(emp.organisationId)) ||
+        orgMapByCode.get(emp.organisationCode) ||
         null
 
       const onb = onboardingMap.get(String(emp._id))
@@ -998,22 +1070,22 @@ router.get("/employees", requireAdmin, async (req, res) => {
         onboardingStatus = "Complete"
       }
 
-      const department = onb?.participantProfile?.D3 || "Not assigned"
+      const department = emp.department || onb?.participantProfile?.D3 || emp.organisationLink?.department || "General"
 
       return {
         _id: emp._id,
-        employeeId: emp.employeeId || "Pending ID",
+        employeeId: emp.employeeId || "—",
         name: emp.name,
-        email: emp.email,
+        email: emp.email || "—",
         organisationId: org ? org.organisationId : String(emp.organisationId || ""),
-        organisationName: org ? org.name : "Unassigned Organisation",
+        organisationName: org ? org.name : (emp.organisationLink?.organisationName || "Organisation"),
         organisationCode: org ? org.organisationCode : emp.organisationCode || "",
         department,
-        status: emp.status || "Pending",
+        status: emp.status || "Active",
         onboardingStatus,
         createdAt: emp.createdAt,
         lastLogin: "Never",
-        archetype: onb?.archetype?.primary || null,
+        archetype: onb?.archetype?.primary || emp.archetype || null,
         msi: onb?.scores?.msi ?? null,
       }
     })
@@ -1026,6 +1098,77 @@ router.get("/employees", requireAdmin, async (req, res) => {
   } catch (err) {
     console.error("[ADMIN] Error fetching global employees:", err.message)
     res.status(500).json({ success: false, message: "Unable to fetch employees. Please try again." })
+  }
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/admin/b2c-users
+//
+// Admin/Founder-protected - returns all B2C / non-employee users:
+// - Pure B2C users
+// - Users with pending organisation link requests
+// - Users whose organisation link requests were rejected
+// ─────────────────────────────────────────────────────────────────────────────
+router.get(["/b2c-users", "/users"], requireAdmin, async (req, res) => {
+  try {
+    const users = await User.find(getB2CUserQuery())
+      .select("-passwordHash")
+      .sort({ createdAt: -1 })
+
+    const orgs = await Organisation.find({})
+    const orgMapById = new Map(orgs.map((o) => [String(o._id), o]))
+    const orgMapByCQ = new Map(orgs.map((o) => [o.organisationId, o]))
+    const orgMapByCode = new Map(orgs.map((o) => [o.organisationCode, o]))
+
+    const result = users.map((u) => {
+      const link = u.organisationLink || {}
+      const targetOrg =
+        orgMapById.get(String(u.organisationId || link.organisationId)) ||
+        orgMapByCQ.get(String(u.organisationId || link.organisationId)) ||
+        orgMapByCode.get(u.organisationCode || link.organisationCode) ||
+        null
+
+      const orgName = targetOrg?.name || link.organisationName || (u.organisationId ? "Organisation Requested" : "None")
+      const orgCode = targetOrg?.organisationCode || link.organisationCode || u.organisationCode || ""
+
+      let orgStatus = "Not Connected"
+      let rawOrgStatus = "none"
+
+      if (link.status === "pending" || u.status === "PendingApproval") {
+        orgStatus = "Pending HR Approval"
+        rawOrgStatus = "pending"
+      } else if (link.status === "rejected" || u.status === "Rejected") {
+        orgStatus = "Rejected"
+        rawOrgStatus = "rejected"
+      } else {
+        orgStatus = "Not Connected"
+        rawOrgStatus = "none"
+      }
+
+      return {
+        _id: u._id,
+        name: u.name,
+        username: u.username || "",
+        email: u.email || "—",
+        accountStatus: u.status || "Active",
+        organisationName: orgName,
+        organisationCode: orgCode,
+        organisationStatus: orgStatus,
+        rawOrgStatus,
+        department: link.department || u.department || "—",
+        profileCompleted: !!u.profileCompleted,
+        createdAt: u.createdAt,
+      }
+    })
+
+    return res.status(200).json({
+      success: true,
+      count: result.length,
+      users: result,
+    })
+  } catch (err) {
+    console.error("[ADMIN] Error fetching B2C users:", err.message)
+    res.status(500).json({ success: false, message: "Unable to fetch B2C users. Please try again." })
   }
 })
 
@@ -1792,6 +1935,7 @@ router.get("/dashboard/stats", requireAdmin, async (req, res) => {
       totalOrganisations,
       activeOrganisations,
       totalEmployees,
+      totalB2CUsers,
       assessmentsCompleted,
     ] = await Promise.all([
       // Total organisations in MongoDB
@@ -1802,8 +1946,11 @@ router.get("/dashboard/stats", requireAdmin, async (req, res) => {
         $or: [{ status: "Active" }, { status: { $exists: false }, isActive: true }],
       }),
 
-      // Total real employee accounts
-      User.countDocuments({ role: { $in: ["employee", "Employee"] } }),
+      // Total approved employee accounts
+      User.countDocuments(getApprovedEmployeeQuery()),
+
+      // Total B2C user accounts
+      User.countDocuments(getB2CUserQuery()),
 
       // Assessments completed (Daily check-ins in Assessment model + any legacy records)
       Promise.all([
@@ -1822,6 +1969,7 @@ router.get("/dashboard/stats", requireAdmin, async (req, res) => {
       stats: {
         totalOrganisations,
         totalEmployees,
+        totalB2CUsers,
         assessmentsCompleted,
         activeOrganisations,
       },

@@ -1,7 +1,8 @@
 import { useState } from "react"
-import { createBrowserRouter, redirect, Outlet, useNavigate } from "react-router-dom"
+import { createBrowserRouter, redirect, Outlet, useNavigate, useLocation } from "react-router-dom"
 import Landing from "@/screens/landing/Landing"
 import Login from "@/screens/auth/Login"
+import HRLogin from "@/screens/auth/HRLogin"
 import AdminLogin from "@/screens/auth/AdminLogin"
 import ListenerLogin from "@/screens/auth/ListenerLogin"
 import Onboarding from "@/screens/auth/Onboarding"
@@ -15,6 +16,8 @@ import PrivacyPolicyScreen from "@/screens/legal/PrivacyPolicy"
 import TermsAndConditionsScreen from "@/screens/legal/TermsAndConditions"
 import ParticipantConsentScreen from "@/screens/legal/ParticipantConsent"
 import ContactScreen from "@/screens/contact/ContactScreen"
+import CreateProfile from "@/screens/auth/CreateProfile"
+import ResetPassword from "@/screens/auth/ResetPassword"
 import logoSrc from "@/imports/image-2.png"
 
 // ── Auth & Storage Helpers ───────────────────────────────────────────────────
@@ -75,6 +78,15 @@ export async function requireActiveEmployeeLoader({ request }: { request?: Reque
     const data = await res.json()
     if (data.success && data.user) {
       const rawStatus = data.user.status || data.status
+
+      // Check if user needs to complete their personal B2C profile first
+      const isLegacy = data.user.baselineMsi !== null || data.user.department !== null || (data.user.age !== null && data.user.age !== undefined)
+      if (data.user.profileCompleted === false && !isLegacy) {
+        localStorage.setItem("cq_profile_completed", "false")
+        return redirect("/create-profile")
+      }
+      localStorage.setItem("cq_profile_completed", "true")
+
       if (rawStatus === "Active" || rawStatus === "Approved") {
         localStorage.setItem("cq_approval_status", "approved")
         localStorage.setItem("cq_onboarding_status", "complete")
@@ -85,19 +97,25 @@ export async function requireActiveEmployeeLoader({ request }: { request?: Reque
           if (isBaselinePath) {
             return redirect("/home")
           }
-          return null
-        } else {
-          // Approved but no baseline yet -> force baseline flow
-          if (isBaselinePath) {
-            return null
-          }
-          return redirect("/baseline")
         }
+        return null
       } else if (rawStatus === "Rejected") {
+        if (data.user?.organisationLink && data.user.organisationLink.status === "rejected") {
+          // B2C user with rejected org link stays in normal app
+          localStorage.setItem("cq_approval_status", "approved")
+          localStorage.setItem("cq_onboarding_status", "complete")
+          return null
+        }
         localStorage.setItem("cq_approval_status", "rejected")
         localStorage.setItem("cq_onboarding_status", "complete")
         return redirect("/approval-rejected")
       } else if (rawStatus === "PendingApproval" || rawStatus === "Pending") {
+        if (data.user?.organisationLink && data.user.organisationLink.status === "pending") {
+          // B2C user with pending org link continues using B2C platform normally
+          localStorage.setItem("cq_approval_status", "approved")
+          localStorage.setItem("cq_onboarding_status", "complete")
+          return null
+        }
         localStorage.setItem("cq_approval_status", "pending")
         localStorage.setItem("cq_onboarding_status", "complete")
         return redirect("/waiting-approval")
@@ -145,11 +163,11 @@ export function requireHRLoader() {
   const token = localStorage.getItem("cq_token")
   const role = (localStorage.getItem("cq_role") || "").toLowerCase()
   if (!token) {
-    return redirect("/company-login")
+    return redirect("/hr-login")
   }
   if (role !== "hr" && role !== "admin" && role !== "founder") {
     // If logged in as an employee, redirect to employee home or sign in
-    return redirect("/company-login")
+    return redirect("/hr-login")
   }
   return null
 }
@@ -207,7 +225,7 @@ function WaitingApprovalScreen() {
       const data = await res.json()
       if (data.success && data.user) {
         const rawStatus = data.user.status || data.status
-        if (rawStatus === "Active" || rawStatus === "Approved") {
+        if (rawStatus === "Active" || rawStatus === "Approved" || data.user?.organisationLink?.status === "pending") {
           localStorage.setItem("cq_approval_status", "approved")
           navigate("/home")
           return
@@ -258,7 +276,7 @@ function WaitingApprovalScreen() {
           <h2 className="text-2xl font-semibold text-warm-white mb-2">Your account is awaiting approval.</h2>
           <p className="text-sm font-medium text-text-secondary mb-3">Your organisation's HR team is reviewing your registration.</p>
           <p className="text-sm text-text-muted leading-relaxed mb-6 max-w-xs mx-auto">
-            Once approved, you will have immediate access to your wellness dashboard, check-ins, and workplace tools.
+            Once approved, you will have immediate access to your organisation's workplace tools. Your personal dashboard remains available.
           </p>
 
           {msg && (
@@ -284,6 +302,16 @@ function WaitingApprovalScreen() {
               ) : (
                 "Refresh Status"
               )}
+            </button>
+
+            <button
+              className="w-full py-2.5 text-xs text-lavender-soft hover:text-warm-white transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+              onClick={() => {
+                localStorage.setItem("cq_approval_status", "approved")
+                navigate("/home")
+              }}
+            >
+              Continue to Personal Dashboard &rarr;
             </button>
 
             <button
@@ -367,7 +395,12 @@ function AcceptInviteScreen() {
 
 function WelcomeScreen() {
   const navigate = useNavigate()
-  return <Landing onGetStarted={() => navigate("/company-login")} />
+  return (
+    <Landing
+      onGetStarted={() => navigate("/company-login")}
+      onHRLogin={() => navigate("/hr-login")}
+    />
+  )
 }
 
 function CompanyLoginScreen() {
@@ -434,19 +467,33 @@ function CompanyLoginScreen() {
     localStorage.setItem("cq_user_name", name)
     localStorage.setItem("cq_username", username)
     localStorage.setItem("cq_user_email", email)
-    localStorage.setItem("cq_onboarding_status", "incomplete")
-    localStorage.setItem("cq_approval_status", "none")
+    localStorage.setItem("cq_onboarding_status", "complete")
+    localStorage.setItem("cq_approval_status", "approved")
+    localStorage.setItem("cq_profile_completed", "false")
     localStorage.removeItem("cq_onboarding_answers")
     localStorage.removeItem("cq_onboarding_step")
-    navigate("/corporate-onboarding")
+
+    // Post-signup: show "Create Your Profile"
+    navigate("/create-profile")
   }
 
   return (
     <Login
       onEmployeeSignIn={handleEmployeeSignIn}
       onCreateAccount={handleCreateAccount}
-      onHR={() => navigate("/hr")}
+      onHR={() => navigate("/hr-login")}
       onBack={() => navigate("/")}
+      initialMode="employee"
+    />
+  )
+}
+
+function HRLoginScreen() {
+  const navigate = useNavigate()
+  return (
+    <HRLogin
+      onSignIn={() => navigate("/hr")}
+      onBack={() => navigate("/company-login")}
     />
   )
 }
@@ -527,6 +574,10 @@ export const router = createBrowserRouter([
         Component: AcceptInvitation,
       },
       {
+        path: "reset-password",
+        Component: ResetPassword,
+      },
+      {
         path: "privacy-policy",
         Component: PrivacyPolicyScreen,
       },
@@ -571,6 +622,15 @@ export const router = createBrowserRouter([
         Component: CompanyLoginScreen,
       },
       {
+        path: "create-profile",
+        Component: CreateProfile,
+        loader: () => {
+          const token = localStorage.getItem("cq_token")
+          if (!token) return redirect("/company-login")
+          return null
+        },
+      },
+      {
         path: "waiting-approval",
         Component: WaitingApprovalScreen,
       },
@@ -595,7 +655,7 @@ export const router = createBrowserRouter([
       },
       {
         path: "hr-login",
-        Component: CompanyLoginScreen,
+        Component: HRLoginScreen,
       },
       {
         path: "hr/accept-invitation",

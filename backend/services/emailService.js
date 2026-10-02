@@ -961,6 +961,103 @@ Team CortiQuant`
   }
 }
 
+/**
+ * Sends a verification code for personal email change.
+ */
+async function sendEmailChangeVerificationCode({ toEmail, userName, verificationCode, expiresInMinutes = 15 }) {
+  const transporter = getTransporter()
+  const fromAddress = process.env.EMAIL_FROM || process.env.SMTP_USER || "CortiQuant <cortiquant@gmail.com>"
+  const displayName = userName ? userName.trim() : "CortiQuant User"
+  const to = toEmail.trim().toLowerCase()
+  const subject = "Your CortiQuant Email Verification Code"
+
+  const text = `Hello ${displayName},
+
+You recently requested to change your email address on CortiQuant.
+
+Your verification code is: ${verificationCode}
+
+This code will expire in ${expiresInMinutes} minutes. If you did not make this request, please ignore this email and your account email will remain unchanged.
+
+Best regards,
+The CortiQuant Team`
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>CortiQuant Email Verification Code</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0b0c10; color: #ffffff;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <table width="100%" max-width="560" cellpadding="0" cellspacing="0" style="max-width: 560px; background-color: #12131a; border: 1px solid rgba(139, 92, 246, 0.25); border-radius: 20px; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);">
+          <!-- Header -->
+          <tr>
+            <td style="background: linear-gradient(135deg, #701198 0%, #4c1d95 100%); padding: 32px 36px; text-align: left;">
+              <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">CortiQuant</h1>
+              <p style="color: rgba(255, 255, 255, 0.85); margin: 6px 0 0 0; font-size: 13px;">Personal Account Security</p>
+            </td>
+          </tr>
+          <!-- Body -->
+          <tr>
+            <td style="padding: 36px; text-align: left;">
+              <p style="font-size: 16px; margin: 0 0 14px 0; color: #f3f4f6;">Hello <strong>${displayName}</strong>,</p>
+              <p style="font-size: 14px; line-height: 22px; margin: 0 0 24px 0; color: #9ca3af;">
+                We received a request to update the email address associated with your personal CortiQuant account to <strong style="color: #ffffff;">${to}</strong>.
+              </p>
+              
+              <!-- Code Box -->
+              <div style="background-color: rgba(112, 17, 152, 0.15); border: 1px solid rgba(167, 139, 250, 0.3); border-radius: 14px; padding: 24px; margin-bottom: 24px; text-align: center;">
+                <p style="font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 600; color: #a78bfa; margin: 0 0 8px 0;">Verification Code</p>
+                <div style="font-size: 32px; font-family: monospace; font-weight: 700; letter-spacing: 6px; color: #ffffff;">${verificationCode}</div>
+                <p style="font-size: 12px; color: #9ca3af; margin: 10px 0 0 0;">Expires in ${expiresInMinutes} minutes</p>
+              </div>
+
+              <p style="font-size: 13px; line-height: 20px; color: #6b7280; margin: 0 0 8px 0;">
+                Enter this code in your CortiQuant profile to confirm and update your email address.
+              </p>
+              <p style="font-size: 12px; line-height: 18px; color: #6b7280; margin: 0;">
+                If you did not request this change, you can safely ignore this email. Your account email will remain unchanged.
+              </p>
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 20px 36px; background-color: #0d0e14; border-top: 1px solid rgba(255, 255, 255, 0.05); text-align: center; font-size: 11px; color: #4b5563;">
+              &copy; ${new Date().getFullYear()} CortiQuant. All rights reserved.
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`
+
+  if (!transporter) {
+    console.warn(`[EMAIL MOCK] SMTP not configured. Would send email verification code ${verificationCode} to: ${to}`)
+    return { success: true, mocked: true, code: verificationCode }
+  }
+
+  try {
+    const info = await transporter.sendMail({
+      from: fromAddress,
+      to,
+      subject,
+      text,
+      html,
+    })
+    console.log(`[EMAIL] Verification code email sent to ${to} (msgId: ${info.messageId})`)
+    return { success: true, messageId: info.messageId }
+  } catch (err) {
+    console.error(`[EMAIL] Failed sending verification code to ${to}:`, err.message)
+    return { success: false, error: err.message }
+  }
+}
+
 module.exports = {
   sendHRInvitation,
   sendListenerInvitation,
@@ -973,7 +1070,9 @@ module.exports = {
   sendEmployeeApprovedEmail,
   employeeRejectedEmailTemplate,
   sendEmployeeRejectedEmail,
+  sendEmailChangeVerificationCode,
   verifySMTP,
+  getTransporter,
 }
 
 

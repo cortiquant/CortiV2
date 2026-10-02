@@ -4616,11 +4616,105 @@ function ProfileScreen({ onBack, onNav }: { onBack: () => void; onNav: (s: Scree
 
   // Form edit fields
   const [formName, setFormName] = useState("")
+  const [formAge, setFormAge] = useState("")
+  const [formGender, setFormGender] = useState("")
+  const [formOccupation, setFormOccupation] = useState("")
+  const [formSleepHours, setFormSleepHours] = useState<number>(7)
+  const [formIllnessHistory, setFormIllnessHistory] = useState("")
   const [formDept, setFormDept] = useState("")
   const [formDesignation, setFormDesignation] = useState("")
   const [formTenure, setFormTenure] = useState("")
   const [formArrangement, setFormArrangement] = useState("")
   const [formWorkload, setFormWorkload] = useState("")
+
+  // Organisation linking modal state
+  const [linkModalOpen, setLinkModalOpen] = useState(false)
+  const [linkStep, setLinkStep] = useState<"code" | "details" | "review" | "success">("code")
+  const [linkOrgCode, setLinkOrgCode] = useState("")
+  const [linkVerifying, setLinkVerifying] = useState(false)
+  const [linkVerifyError, setLinkVerifyError] = useState("")
+  const [verifiedOrg, setVerifiedOrg] = useState<{ id: string; organisationId: string; name: string; code: string } | null>(null)
+  const [availableDepts, setAvailableDepts] = useState<string[]>([])
+  const [selectedDept, setSelectedDept] = useState("")
+  const [selectedHours, setSelectedHours] = useState("35–40 hrs")
+  const [selectedWorkType, setSelectedWorkType] = useState<"Office" | "Remote" | "Hybrid">("Office")
+  const [linkSubmitting, setLinkSubmitting] = useState(false)
+  const [linkSubmitError, setLinkSubmitError] = useState("")
+
+  async function handleVerifyOrgCode() {
+    setLinkVerifyError("")
+    const cleanCode = linkOrgCode.trim().toUpperCase()
+    if (!cleanCode) {
+      setLinkVerifyError("Please enter an organisation code.")
+      return
+    }
+
+    setLinkVerifying(true)
+    try {
+      const token = localStorage.getItem("cq_token")
+      const res = await fetch(`/api/employee/organisation-departments?code=${encodeURIComponent(cleanCode)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json()
+      if (res.ok && data.success && data.organisation) {
+        setVerifiedOrg(data.organisation)
+        setAvailableDepts(data.departments || [])
+        if (data.departments && data.departments.length > 0) {
+          setSelectedDept(data.departments[0])
+        }
+        setLinkStep("details")
+      } else {
+        setLinkVerifyError(data.message || "Organisation code not found. Please check the code and try again.")
+      }
+    } catch {
+      setLinkVerifyError("Network error verifying organisation code.")
+    } finally {
+      setLinkVerifying(false)
+    }
+  }
+
+  async function handleSubmitOrgLink() {
+    if (!verifiedOrg) return
+    setLinkSubmitError("")
+    setLinkSubmitting(true)
+
+    try {
+      const token = localStorage.getItem("cq_token")
+      const res = await fetch("/api/employee/link-organisation", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          organisationCode: verifiedOrg.code,
+          department: selectedDept,
+          workingHours: selectedHours,
+          workType: selectedWorkType,
+        }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setLinkStep("success")
+        loadProfileData()
+      } else {
+        setLinkSubmitError(data.message || "Failed to submit link request. Please try again.")
+      }
+    } catch {
+      setLinkSubmitError("Connection error while submitting organisation link request.")
+    } finally {
+      setLinkSubmitting(false)
+    }
+  }
+
+  function resetLinkModal() {
+    setLinkModalOpen(false)
+    setLinkStep("code")
+    setLinkOrgCode("")
+    setLinkVerifyError("")
+    setLinkSubmitError("")
+    setVerifiedOrg(null)
+  }
 
   // Delete account state
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
@@ -4656,6 +4750,121 @@ function ProfileScreen({ onBack, onNav }: { onBack: () => void; onNav: (s: Scree
     }
   }
 
+  // Email change state & flow
+  const [emailModalOpen, setEmailModalOpen] = useState(false)
+  const [emailStep, setEmailStep] = useState<"input" | "code" | "success">("input")
+  const [newEmailInput, setNewEmailInput] = useState("")
+  const [emailCodeInput, setEmailCodeInput] = useState("")
+  const [emailLoading, setEmailLoading] = useState(false)
+  const [emailError, setEmailError] = useState("")
+  const [emailNotice, setEmailNotice] = useState("")
+  const [verifiedNewEmail, setVerifiedNewEmail] = useState("")
+
+  function openEmailModal() {
+    setEmailModalOpen(true)
+    setEmailStep("input")
+    setNewEmailInput("")
+    setEmailCodeInput("")
+    setEmailError("")
+    setEmailNotice("")
+    setVerifiedNewEmail("")
+  }
+
+  function closeEmailModal() {
+    if (emailLoading) return
+    setEmailModalOpen(false)
+    setEmailStep("input")
+    setNewEmailInput("")
+    setEmailCodeInput("")
+    setEmailError("")
+    setEmailNotice("")
+  }
+
+  async function handleSendEmailCode(e?: React.FormEvent) {
+    if (e) e.preventDefault()
+    const trimmed = newEmailInput.trim().toLowerCase()
+    if (!trimmed) {
+      setEmailError("Please enter your new email address.")
+      return
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(trimmed)) {
+      setEmailError("Please provide a valid email address.")
+      return
+    }
+    if (trimmed === (profile?.email || "").toLowerCase()) {
+      setEmailError("New email must be different from your current email.")
+      return
+    }
+
+    setEmailLoading(true)
+    setEmailError("")
+    setEmailNotice("")
+
+    try {
+      const token = localStorage.getItem("cq_token")
+      const res = await fetch("/api/employee/request-email-change", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ newEmail: trimmed }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setEmailStep("code")
+        setEmailNotice(data.message || `Verification code sent to ${trimmed}.`)
+      } else {
+        setEmailError(data.message || "Failed to send verification code.")
+      }
+    } catch {
+      setEmailError("Network error sending verification code. Please try again.")
+    } finally {
+      setEmailLoading(false)
+    }
+  }
+
+  async function handleVerifyEmailCode(e?: React.FormEvent) {
+    if (e) e.preventDefault()
+    const code = emailCodeInput.trim()
+    if (!code) {
+      setEmailError("Please enter the 6-digit verification code.")
+      return
+    }
+
+    setEmailLoading(true)
+    setEmailError("")
+
+    try {
+      const token = localStorage.getItem("cq_token")
+      const res = await fetch("/api/employee/verify-email-change", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ code }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setVerifiedNewEmail(data.email || newEmailInput.trim())
+        if (data.email) {
+          localStorage.setItem("cq_user_email", data.email)
+        }
+        setEmailStep("success")
+        setEmailNotice("Email updated successfully.")
+        loadProfileData()
+      } else {
+        setEmailError(data.message || "Invalid or expired verification code.")
+      }
+    } catch {
+      setEmailError("Network error verifying code. Please try again.")
+    } finally {
+      setEmailLoading(false)
+    }
+  }
+
   function loadProfileData() {
     const token = localStorage.getItem("cq_token")
     if (!token) return
@@ -4672,6 +4881,11 @@ function ProfileScreen({ onBack, onNav }: { onBack: () => void; onNav: (s: Scree
         if (profData.success && profData.data) {
           setProfile(profData.data)
           setFormName(profData.data.name || "")
+          setFormAge(profData.data.age != null ? String(profData.data.age) : "")
+          setFormGender(profData.data.gender || "")
+          setFormOccupation(profData.data.occupation || "")
+          setFormSleepHours(profData.data.sleepHours != null ? Number(profData.data.sleepHours) : 7)
+          setFormIllnessHistory(profData.data.illnessHistory || "")
           setFormDept(profData.data.department || "")
           setFormDesignation(profData.data.designation || "")
           setFormTenure(profData.data.tenure || "")
@@ -4704,11 +4918,11 @@ function ProfileScreen({ onBack, onNav }: { onBack: () => void; onNav: (s: Scree
         },
         body: JSON.stringify({
           name: formName,
-          department: formDept,
-          designation: formDesignation,
-          tenure: formTenure,
-          workArrangement: formArrangement,
-          weeklyWorkload: formWorkload,
+          age: formAge ? Number(formAge) : undefined,
+          gender: formGender,
+          occupation: formOccupation,
+          sleepHours: formSleepHours,
+          illnessHistory: formIllnessHistory,
         }),
       })
       const data = await res.json()
@@ -4729,49 +4943,68 @@ function ProfileScreen({ onBack, onNav }: { onBack: () => void; onNav: (s: Scree
     }
   }
 
-  const archetype = localStorage.getItem("cq_archetype") ?? null
+  const archetype = localStorage.getItem("cq_archetype") ?? metrics?.primaryArchetype ?? metrics?.archetype ?? profile?.primaryArchetype ?? null
   const ap = archetype ? ARCHETYPE_PROFILES[archetype] : null
 
+  // ── Personal Profile Details (User-Owned) ──
   const empName = profile?.name || "—"
-  const empId = profile?.employeeId || "—"
   const username = profile?.username || "—"
-  const dept = profile?.department || "—"
-  const designation = profile?.designation || "—"
-  const tenure = profile?.tenure || "—"
-  const arrangement = profile?.workArrangement || "—"
-  const workload = profile?.weeklyWorkload || "—"
+  const emailVal = profile?.email || "—"
   const ageVal = (profile?.age && profile.age !== "—") ? profile.age : (profile?.ageRange && profile.ageRange !== "—") ? profile.ageRange : null
   const genderVal = (profile?.gender && profile.gender !== "—") ? profile.gender : null
-  const ageGender =
-    ageVal && genderVal
-      ? `${ageVal} · ${genderVal}`
-      : ageVal || genderVal || "—"
+  const occupationVal = profile?.occupation || "—"
+  const sleepHoursVal = profile?.sleepHours != null ? `${profile.sleepHours} hrs / night` : "—"
+  const illnessHistoryVal = profile?.illnessHistory || "—"
 
-  const msiArray = Array.isArray(metrics?.msi) && metrics.msi.length > 0 ? metrics.msi : []
-  const latestItem = msiArray.length > 0 ? msiArray[msiArray.length - 1] : null
-  const baselineItem = msiArray.find((item: any) => item.type === "baseline")
-
-  const baselineScore = baselineItem ? baselineItem.score : (metrics?.baselineMsi ?? profile?.baselineMsi ?? null)
-  const currentScore = latestItem ? latestItem.score : (metrics?.currentMsi ?? profile?.currentMsi ?? baselineScore)
-  const lastDate = metrics?.lastAssessmentDate
-    ? new Date(metrics.lastAssessmentDate).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })
-    : "—"
-
-  const infoFields = [
-    { label: "USERNAME", value: username },
-    { label: "DEPARTMENT", value: dept },
-    { label: "DESIGNATION", value: designation },
-    { label: "TENURE", value: tenure },
-    { label: "ARRANGEMENT", value: arrangement },
-    { label: "WEEKLY WORKLOAD", value: workload },
+  const personalFields = [
+    { label: "NAME", value: empName },
+    { label: "USERNAME", value: username !== "—" ? `@${username}` : "—" },
+    { label: "EMAIL", value: emailVal },
+    { label: "AGE", value: ageVal ? `${ageVal} years` : "—" },
+    { label: "GENDER", value: genderVal || "—" },
+    { label: "OCCUPATION", value: occupationVal },
+    { label: "SLEEP HOURS", value: sleepHoursVal },
+    { label: "PREVIOUS HISTORY OF ILLNESS", value: illnessHistoryVal },
   ]
+
+  // ── Assessment Metrics (Using Unified MSI Architecture) ──
+  const msiArray = Array.isArray(profile?.msi) && profile.msi.length > 0
+    ? profile.msi
+    : Array.isArray(metrics?.msi) && metrics.msi.length > 0
+      ? metrics.msi
+      : []
+  const baselineItem = msiArray.find((item: any) => item.type === "baseline")
+  const latestItem = msiArray.length > 0 ? msiArray[msiArray.length - 1] : null
+
+  const baselineScore = baselineItem ? baselineItem.score : (profile?.baselineMsi ?? metrics?.baselineMsi ?? null)
+  const currentScore = latestItem ? latestItem.score : (profile?.currentMsi ?? metrics?.currentMsi ?? baselineScore)
+  const lastDate = latestItem?.recordedAt
+    ? new Date(latestItem.recordedAt).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })
+    : metrics?.lastAssessmentDate
+    ? new Date(metrics.lastAssessmentDate).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })
+    : profile?.lastAssessmentDate
+    ? new Date(profile.lastAssessmentDate).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })
+    : "—"
 
   const metricsFields = [
     { label: "Baseline Stress (Baseline MSI)", value: baselineScore != null ? `${baselineScore}%` : "—", accent: false },
-    { label: "Current Stress (Current MSI)", value: currentScore != null ? `${currentScore}%` : "—", accent: false },
+    { label: "Current Stress (latest MSI)", value: currentScore != null ? `${currentScore}%` : "—", accent: false },
     { label: "Primary Archetype", value: archetype ?? "—", accent: !!archetype },
     { label: "Last Assessment Date", value: lastDate, accent: false },
   ]
+
+  // ── Organisation Details (Separate Membership Section) ──
+  const orgObj = (profile?.organisation && typeof profile.organisation === "object") ? profile.organisation : null
+  const orgStatus = orgObj?.status || profile?.organisationLink?.status || (profile?.employeeId && (profile?.status === "Active" || profile?.status === "Approved") ? "approved" : profile?.status === "PendingApproval" ? "pending" : profile?.status === "Rejected" ? "rejected" : "none")
+  const hasApprovedOrg = orgStatus === "approved"
+  const isPendingOrg = orgStatus === "pending"
+  const isRejectedOrg = orgStatus === "rejected"
+
+  const orgName = orgObj?.name || profile?.organisationName || (typeof profile?.organisation === "string" ? profile.organisation : null) || profile?.organisationCode || "Organisation"
+  const empId = orgObj?.employeeId || profile?.employeeId || "—"
+  const orgDept = orgObj?.department || profile?.department || "—"
+  const orgHours = orgObj?.workingHours || profile?.organisationLink?.workingHours || profile?.weeklyWorkload || "—"
+  const orgWorkType = orgObj?.workType || profile?.organisationLink?.workType || profile?.workArrangement || "—"
 
   return (
     <div className="flex-1 flex flex-col pb-36 overflow-y-auto">
@@ -4786,7 +5019,7 @@ function ProfileScreen({ onBack, onNav }: { onBack: () => void; onNav: (s: Scree
           </svg>
           Back
         </button>
-        <span className="text-sm font-semibold text-warm-white">Employee Profile</span>
+        <span className="text-sm font-semibold text-warm-white">Profile</span>
         <button
           onClick={() => {
             localStorage.clear()
@@ -4799,10 +5032,17 @@ function ProfileScreen({ onBack, onNav }: { onBack: () => void; onNav: (s: Scree
       </div>
 
       <div className="px-5 space-y-4">
-        {/* Profile info card */}
+        {/* ── 1. PERSONAL PROFILE ── */}
         <div className="card-base p-5">
+          <div className="flex items-center justify-between pb-3 mb-4 border-b border-border-p">
+            <p className="text-sm font-semibold text-warm-white">Personal Profile</p>
+            <span className="text-[11px] font-semibold text-text-muted px-2 py-0.5 rounded-full bg-elevated border border-border-p">
+              User Details
+            </span>
+          </div>
+
           <div className="flex items-center gap-4 mb-6">
-            <div className="w-14 h-14 rounded-full border-2 border-border-s bg-elevated flex items-center justify-center flex-shrink-0">
+            <div className="w-14 h-14 rounded-full border-2 border-border-s bg-elevated flex items-center justify-center flex-shrink-0 text-lavender-bright">
               <svg className="w-8 h-8 text-text-secondary" fill="none" viewBox="0 0 24 24">
                 <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.5" />
                 <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -4810,25 +5050,34 @@ function ProfileScreen({ onBack, onNav }: { onBack: () => void; onNav: (s: Scree
             </div>
             <div>
               <p className="text-base font-bold text-warm-white leading-tight">{empName}</p>
-              <p className="text-xs text-text-muted mt-0.5">ID: {empId}</p>
+              <p className="text-xs text-text-muted mt-0.5">
+                {username !== "—" ? `@${username}` : "Personal Account"}
+              </p>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-            {infoFields.map((f) => (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+            {personalFields.map((f) => (
               <div key={f.label}>
-                <p className="text-[9px] font-semibold text-text-muted mb-0.5">{f.label}</p>
+                <div className="flex items-center justify-between mb-0.5">
+                  <p className="text-[9px] font-semibold text-text-muted tracking-wider">{f.label}</p>
+                  {f.label === "EMAIL" && (
+                    <button
+                      type="button"
+                      onClick={openEmailModal}
+                      className="text-[11px] font-semibold text-lavender-bright hover:underline cursor-pointer flex items-center gap-1"
+                    >
+                      Change Email
+                    </button>
+                  )}
+                </div>
                 <p className="text-sm text-text-secondary font-medium">{f.value}</p>
               </div>
             ))}
-            <div className="col-span-2">
-              <p className="text-[9px] font-semibold text-text-muted mb-0.5">Age & gender</p>
-              <p className="text-sm text-text-secondary font-medium">{ageGender}</p>
-            </div>
           </div>
         </div>
 
-        {/* Assessment Metrics */}
+        {/* ── 2. ASSESSMENT METRICS ── */}
         <div className="card-base p-5">
           <p className="text-sm font-semibold text-warm-white mb-1">Assessment metrics</p>
           <div className="divide-y divide-border-p">
@@ -4847,7 +5096,125 @@ function ProfileScreen({ onBack, onNav }: { onBack: () => void; onNav: (s: Scree
           </div>
         </div>
 
-        {/* Edit Profile Settings */}
+        {/* ── 3. ORGANISATION ── */}
+        <div className="card-base p-5">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-sm font-semibold text-warm-white">Organisation</p>
+            {hasApprovedOrg && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                Connected
+              </span>
+            )}
+            {isPendingOrg && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/25">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse-dot" />
+                Pending HR approval
+              </span>
+            )}
+            {isRejectedOrg && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-c-critical/10 text-c-critical border border-c-critical/25">
+                Request rejected
+              </span>
+            )}
+            {!hasApprovedOrg && !isPendingOrg && !isRejectedOrg && (
+              <span className="text-xs text-text-muted">Not connected</span>
+            )}
+          </div>
+
+          {/* STATE C: APPROVED / CONNECTED */}
+          {hasApprovedOrg && (
+            <div className="space-y-3 pt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-2">
+                <div>
+                  <p className="text-[10px] uppercase font-semibold text-text-muted">Organisation Name</p>
+                  <p className="text-sm text-warm-white font-medium">{orgName}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase font-semibold text-text-muted">Employee ID</p>
+                  <p className="text-sm text-lavender-bright font-semibold font-mono">{empId}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3 pt-2 border-t border-border-p">
+                <div>
+                  <p className="text-[9px] font-semibold text-text-muted">DEPARTMENT</p>
+                  <p className="text-xs text-text-secondary font-medium mt-0.5">{orgDept}</p>
+                </div>
+                <div>
+                  <p className="text-[9px] font-semibold text-text-muted">WORKING HOURS</p>
+                  <p className="text-xs text-text-secondary font-medium mt-0.5">{orgHours}</p>
+                </div>
+                <div>
+                  <p className="text-[9px] font-semibold text-text-muted">WORK TYPE</p>
+                  <p className="text-xs text-text-secondary font-medium mt-0.5">{orgWorkType}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STATE B: PENDING */}
+          {isPendingOrg && (
+            <div className="space-y-2 pt-2 text-left">
+              <div>
+                <p className="text-[10px] uppercase font-semibold text-text-muted">Organisation Name</p>
+                <p className="text-sm text-warm-white font-medium">{orgName}</p>
+              </div>
+              <div className="pt-2 border-t border-border-p space-y-1">
+                <p className="text-xs text-amber-400 font-semibold">Status: Pending HR approval</p>
+                <p className="text-xs text-text-secondary leading-relaxed">
+                  Your request to join <span className="text-warm-white font-semibold">{orgName}</span> is awaiting review and approval by your HR team.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* STATE D: REJECTED */}
+          {isRejectedOrg && (
+            <div className="pt-2 text-left space-y-3">
+              <div>
+                <p className="text-[10px] uppercase font-semibold text-text-muted">Organisation Name</p>
+                <p className="text-sm text-warm-white font-medium">{orgName}</p>
+              </div>
+              <div className="pt-2 border-t border-border-p space-y-1">
+                <p className="text-xs text-c-critical font-semibold">Status: Request rejected</p>
+                <p className="text-xs text-text-secondary leading-relaxed">
+                  Your request to join <span className="text-warm-white font-semibold">{orgName}</span> was not approved.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setLinkStep("code")
+                  setLinkModalOpen(true)
+                }}
+                className="w-full py-2.5 rounded-xl border border-purple-core/30 bg-purple-core/10 text-lavender-bright hover:bg-purple-core/20 text-xs font-semibold cursor-pointer transition-colors"
+              >
+                Link with Organisation
+              </button>
+            </div>
+          )}
+
+          {/* STATE A: NOT CONNECTED */}
+          {!hasApprovedOrg && !isPendingOrg && !isRejectedOrg && (
+            <div className="pt-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setLinkStep("code")
+                  setLinkModalOpen(true)
+                }}
+                className="w-full py-3 rounded-xl border border-purple-core/40 bg-purple-core/10 hover:bg-purple-core/20 text-lavender-bright text-xs font-semibold cursor-pointer transition-all flex items-center justify-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                </svg>
+                Link with Organisation
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Edit Profile Settings Button */}
         <button
           onClick={() => setEditOpen(true)}
           className="w-full py-4 rounded-2xl font-semibold text-sm text-white transition-colors cursor-pointer"
@@ -4971,18 +5338,21 @@ function ProfileScreen({ onBack, onNav }: { onBack: () => void; onNav: (s: Scree
       {/* Edit Profile Modal */}
       {editOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-          <div className="card-base w-full max-w-sm p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+          <div className="card-base w-full max-w-md p-5 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-2 border-b border-border-p">
-              <h3 className="text-base font-bold text-warm-white">Edit Profile Settings</h3>
+              <div>
+                <h3 className="text-base font-bold text-warm-white">Edit Profile Settings</h3>
+                <p className="text-[11px] text-text-muted">Update your personal wellbeing information</p>
+              </div>
               <button
                 onClick={() => setEditOpen(false)}
-                className="text-text-muted hover:text-warm-white transition-colors cursor-pointer text-sm"
+                className="text-text-muted hover:text-warm-white transition-colors cursor-pointer text-sm p-1"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleSaveProfile} className="space-y-3 text-left">
+            <form onSubmit={handleSaveProfile} className="space-y-4 text-left">
               <div>
                 <label className="text-[11px] font-semibold text-text-muted">Full Name</label>
                 <input
@@ -4994,66 +5364,99 @@ function ProfileScreen({ onBack, onNav }: { onBack: () => void; onNav: (s: Scree
                 />
               </div>
 
-              <div>
-                <label className="text-[11px] font-semibold text-text-muted">Department</label>
-                <input
-                  type="text"
-                  value={formDept}
-                  onChange={(e) => setFormDept(e.target.value)}
-                  className="w-full mt-1 bg-elevated border border-border-p rounded-xl px-3 py-2 text-sm text-warm-white outline-none focus:border-purple-core"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-semibold text-text-muted">Age</label>
+                  <input
+                    type="number"
+                    min="10"
+                    max="120"
+                    value={formAge}
+                    onChange={(e) => setFormAge(e.target.value)}
+                    className="w-full mt-1 bg-elevated border border-border-p rounded-xl px-3 py-2 text-sm text-warm-white outline-none focus:border-purple-core"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-text-muted">Gender</label>
+                  <select
+                    value={formGender}
+                    onChange={(e) => setFormGender(e.target.value)}
+                    className="w-full mt-1 bg-elevated border border-border-p rounded-xl px-3 py-2 text-sm text-warm-white outline-none focus:border-purple-core"
+                  >
+                    <option value="">Select</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Non-binary">Non-binary</option>
+                    <option value="Other">Other</option>
+                    <option value="Prefer not to say">Prefer not to say</option>
+                  </select>
+                </div>
               </div>
 
               <div>
-                <label className="text-[11px] font-semibold text-text-muted">Designation / Role Level</label>
-                <input
-                  type="text"
-                  value={formDesignation}
-                  onChange={(e) => setFormDesignation(e.target.value)}
-                  className="w-full mt-1 bg-elevated border border-border-p rounded-xl px-3 py-2 text-sm text-warm-white outline-none focus:border-purple-core"
-                />
-              </div>
-
-              <div>
-                <label className="text-[11px] font-semibold text-text-muted">Tenure</label>
+                <label className="text-[11px] font-semibold text-text-muted">Occupation</label>
                 <select
-                  value={formTenure}
-                  onChange={(e) => setFormTenure(e.target.value)}
+                  value={formOccupation}
+                  onChange={(e) => setFormOccupation(e.target.value)}
                   className="w-full mt-1 bg-elevated border border-border-p rounded-xl px-3 py-2 text-sm text-warm-white outline-none focus:border-purple-core"
                 >
-                  <option value="< 6 Months">&lt; 6 Months</option>
-                  <option value="6–12 Months">6–12 Months</option>
-                  <option value="1–2 Years">1–2 Years</option>
-                  <option value="3–5 Years">3–5 Years</option>
-                  <option value="5+ Years">5+ Years</option>
+                  <option value="">Select occupation</option>
+                  <option value="Working Professional">Working Professional</option>
+                  <option value="Student">Student</option>
+                  <option value="Homemaker">Homemaker</option>
+                  <option value="Other">Other</option>
                 </select>
               </div>
 
-              <div>
-                <label className="text-[11px] font-semibold text-text-muted">Work Arrangement</label>
-                <select
-                  value={formArrangement}
-                  onChange={(e) => setFormArrangement(e.target.value)}
-                  className="w-full mt-1 bg-elevated border border-border-p rounded-xl px-3 py-2 text-sm text-warm-white outline-none focus:border-purple-core"
-                >
-                  <option value="Hybrid">Hybrid</option>
-                  <option value="On-site">On-site</option>
-                  <option value="Remote">Remote</option>
-                </select>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-semibold text-text-muted">Sleep Hours (Daily)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="24"
+                    value={formSleepHours}
+                    onChange={(e) => setFormSleepHours(Number(e.target.value))}
+                    className="w-full mt-1 bg-elevated border border-border-p rounded-xl px-3 py-2 text-sm text-warm-white outline-none focus:border-purple-core"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-text-muted">Illness History</label>
+                  <select
+                    value={formIllnessHistory}
+                    onChange={(e) => setFormIllnessHistory(e.target.value)}
+                    className="w-full mt-1 bg-elevated border border-border-p rounded-xl px-3 py-2 text-sm text-warm-white outline-none focus:border-purple-core"
+                  >
+                    <option value="">Select</option>
+                    <option value="Physical">Physical</option>
+                    <option value="Mental">Mental</option>
+                    <option value="Both">Both</option>
+                    <option value="None">None</option>
+                  </select>
+                </div>
               </div>
 
-              <div>
-                <label className="text-[11px] font-semibold text-text-muted">Weekly Workload</label>
-                <select
-                  value={formWorkload}
-                  onChange={(e) => setFormWorkload(e.target.value)}
-                  className="w-full mt-1 bg-elevated border border-border-p rounded-xl px-3 py-2 text-sm text-warm-white outline-none focus:border-purple-core"
-                >
-                  <option value="< 35 Hours">&lt; 35 Hours</option>
-                  <option value="35–40 Hours">35–40 Hours</option>
-                  <option value="41–50 Hours">41–50 Hours</option>
-                  <option value="50+ Hours">50+ Hours</option>
-                </select>
+              {/* Account Email (Verified Change Only) */}
+              <div className="pt-2 border-t border-border-p space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-[11px] font-semibold text-text-muted">Account Email</label>
+                    <p className="text-sm text-warm-white font-medium mt-0.5">{emailVal}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditOpen(false)
+                      openEmailModal()
+                    }}
+                    className="px-3 py-1.5 rounded-xl border border-purple-core/40 bg-purple-core/15 hover:bg-purple-core/25 text-lavender-bright text-xs font-semibold cursor-pointer transition-colors"
+                  >
+                    Change Email
+                  </button>
+                </div>
+                <p className="text-[10px] text-text-muted">
+                  Email updates require verification sent to your new address. Organisation details are managed exclusively by HR.
+                </p>
               </div>
 
               {saveMsg && (
@@ -5079,6 +5482,453 @@ function ProfileScreen({ onBack, onNav }: { onBack: () => void; onNav: (s: Scree
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Change Email Modal */}
+      {emailModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+          <div className="card-base w-full max-w-sm p-6 space-y-4 max-h-[90vh] overflow-y-auto relative border border-purple-core/30 shadow-2xl">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-border-p">
+              <div>
+                <h3 className="text-base font-bold text-warm-white">
+                  {emailStep === "success"
+                    ? "Email Updated"
+                    : emailStep === "code"
+                    ? "Verify New Email"
+                    : "Change Email"}
+                </h3>
+                <p className="text-[11px] text-text-muted mt-0.5">
+                  {emailStep === "success"
+                    ? "Your email has been verified and updated"
+                    : emailStep === "code"
+                    ? "Enter verification code"
+                    : "Update your personal account email"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeEmailModal}
+                disabled={emailLoading}
+                className="text-text-muted hover:text-warm-white transition-colors cursor-pointer text-sm p-1 disabled:opacity-50"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Error & Info Alerts */}
+            {emailError && (
+              <div className="p-3 rounded-xl bg-c-critical/15 border border-c-critical/30 text-c-critical text-xs">
+                {emailError}
+              </div>
+            )}
+            {emailNotice && emailStep !== "success" && (
+              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-xs">
+                {emailNotice}
+              </div>
+            )}
+
+            {/* STEP 1: INPUT NEW EMAIL */}
+            {emailStep === "input" && (
+              <form onSubmit={handleSendEmailCode} className="space-y-4 text-left">
+                <div>
+                  <label className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">Current Email</label>
+                  <p className="text-sm font-medium text-text-secondary mt-0.5 px-3 py-2 rounded-xl bg-surface border border-border-p">
+                    {emailVal}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-semibold text-text-muted">New Email Address</label>
+                  <input
+                    type="email"
+                    value={newEmailInput}
+                    onChange={(e) => setNewEmailInput(e.target.value)}
+                    placeholder="Enter new email address"
+                    className="w-full mt-1 bg-elevated border border-border-p rounded-xl px-3 py-2.5 text-sm text-warm-white outline-none focus:border-purple-core placeholder:text-text-muted/60"
+                    autoFocus
+                    required
+                  />
+                  <p className="text-[10px] text-text-muted mt-1 leading-relaxed">
+                    We will send a 6-digit verification code to confirm you own this address.
+                  </p>
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={closeEmailModal}
+                    disabled={emailLoading}
+                    className="flex-1 py-2.5 rounded-xl border border-border-p text-text-muted hover:text-warm-white text-xs font-semibold cursor-pointer transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={emailLoading || !newEmailInput.trim()}
+                    className="flex-1 btn-primary py-2.5 rounded-xl text-xs font-semibold cursor-pointer transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  >
+                    {emailLoading ? (
+                      <>
+                        <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                        </svg>
+                        <span>Sending Code…</span>
+                      </>
+                    ) : (
+                      <span>Send Verification Code</span>
+                    )}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* STEP 2: VERIFY CODE */}
+            {emailStep === "code" && (
+              <form onSubmit={handleVerifyEmailCode} className="space-y-4 text-left">
+                <div className="p-3 rounded-xl bg-surface border border-border-p text-xs space-y-1">
+                  <span className="text-text-muted text-[11px]">Verification code sent to:</span>
+                  <p className="font-semibold text-warm-white break-all">{newEmailInput.trim()}</p>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-semibold text-text-muted">Enter 6-Digit Code</label>
+                  <input
+                    type="text"
+                    maxLength={6}
+                    value={emailCodeInput}
+                    onChange={(e) => setEmailCodeInput(e.target.value.replace(/\D/g, ""))}
+                    placeholder="123456"
+                    className="w-full mt-1 bg-elevated border border-border-p rounded-xl px-3 py-2.5 text-center text-lg font-mono font-bold tracking-widest text-warm-white outline-none focus:border-purple-core"
+                    autoFocus
+                    required
+                  />
+                  <div className="flex items-center justify-between mt-2">
+                    <span className="text-[10px] text-text-muted">Expires in 15 minutes</span>
+                    <button
+                      type="button"
+                      disabled={emailLoading}
+                      onClick={() => handleSendEmailCode()}
+                      className="text-[11px] text-lavender-bright hover:underline font-semibold cursor-pointer disabled:opacity-50"
+                    >
+                      Resend code
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEmailStep("input")
+                      setEmailError("")
+                    }}
+                    disabled={emailLoading}
+                    className="flex-1 py-2.5 rounded-xl border border-border-p text-text-muted hover:text-warm-white text-xs font-semibold cursor-pointer transition-colors"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={emailLoading || emailCodeInput.trim().length !== 6}
+                    className="flex-1 btn-primary py-2.5 rounded-xl text-xs font-semibold cursor-pointer transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  >
+                    {emailLoading ? (
+                      <>
+                        <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                        </svg>
+                        <span>Verifying…</span>
+                      </>
+                    ) : (
+                      <span>Verify & Update Email</span>
+                    )}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* STEP 3: SUCCESS */}
+            {emailStep === "success" && (
+              <div className="space-y-4 py-2 text-center">
+                <div className="w-12 h-12 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center mx-auto text-emerald-400">
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <div>
+                  <h4 className="text-base font-bold text-warm-white">Email updated successfully</h4>
+                  <p className="text-xs text-text-secondary mt-1">
+                    Your account email has been updated to{" "}
+                    <span className="text-warm-white font-semibold">{verifiedNewEmail}</span>.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeEmailModal}
+                  className="w-full btn-primary py-2.5 rounded-xl text-xs font-semibold cursor-pointer transition-all"
+                >
+                  Done
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      {/* Link with Organisation Modal */}
+      {linkModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+          <div className="card-base w-full max-w-sm p-6 space-y-4 max-h-[90vh] overflow-y-auto relative border border-purple-core/30 shadow-2xl">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-border-p">
+              <div>
+                <h3 className="text-base font-bold text-warm-white">
+                  {linkStep === "success"
+                    ? "Organisation request pending"
+                    : linkStep === "review"
+                    ? "Review Request"
+                    : linkStep === "details"
+                    ? "Organisation Details"
+                    : "Link with Organisation"}
+                </h3>
+                <p className="text-[11px] text-text-muted mt-0.5">
+                  {linkStep === "success"
+                    ? "Pending HR approval"
+                    : "Connect your personal CortiQuant account"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={resetLinkModal}
+                className="text-text-muted hover:text-warm-white transition-colors cursor-pointer text-sm p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Step 1: Code Verification */}
+            {linkStep === "code" && (
+              <div className="space-y-4 text-left">
+                <div>
+                  <h4 className="text-sm font-semibold text-warm-white">Link your account to an organisation</h4>
+                  <p className="text-xs text-text-muted mt-1 leading-relaxed">
+                    Connect your CortiQuant account with your organisation to access organisation-related features.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-semibold text-text-muted">Organisation Code</label>
+                  <input
+                    type="text"
+                    placeholder="Enter organisation code (e.g. FLYA5587)"
+                    value={linkOrgCode}
+                    onChange={(e) => {
+                      setLinkOrgCode(e.target.value.toUpperCase())
+                      setLinkVerifyError("")
+                    }}
+                    className="w-full mt-1 bg-elevated border border-border-p rounded-xl px-3.5 py-2.5 text-sm text-warm-white tracking-widest font-mono uppercase outline-none focus:border-purple-core"
+                  />
+                </div>
+
+                {linkVerifyError && (
+                  <div className="p-3 rounded-xl bg-c-critical/15 border border-c-critical/30 text-c-critical text-xs">
+                    {linkVerifyError}
+                  </div>
+                )}
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={resetLinkModal}
+                    className="flex-1 py-2.5 rounded-xl border border-border-p text-text-muted hover:text-warm-white text-xs font-semibold cursor-pointer transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleVerifyOrgCode}
+                    disabled={linkVerifying || !linkOrgCode.trim()}
+                    className="flex-1 btn-primary py-2.5 rounded-xl text-xs font-semibold cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  >
+                    {linkVerifying ? "Verifying…" : "Verify Organisation"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 2: Collect Organisation Details */}
+            {linkStep === "details" && verifiedOrg && (
+              <div className="space-y-4 text-left">
+                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/25">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400">Organisation found</p>
+                  <p className="text-sm font-bold text-warm-white mt-0.5">{verifiedOrg.name}</p>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-semibold text-text-muted">Department</label>
+                  {availableDepts.length > 0 ? (
+                    <select
+                      value={selectedDept}
+                      onChange={(e) => setSelectedDept(e.target.value)}
+                      className="w-full mt-1 bg-elevated border border-border-p rounded-xl px-3 py-2.5 text-sm text-warm-white outline-none focus:border-purple-core cursor-pointer"
+                    >
+                      {availableDepts.map((d) => (
+                        <option key={d} value={d}>
+                          {d}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      placeholder="e.g. Tech & Product"
+                      value={selectedDept}
+                      onChange={(e) => setSelectedDept(e.target.value)}
+                      className="w-full mt-1 bg-elevated border border-border-p rounded-xl px-3 py-2 text-sm text-warm-white outline-none focus:border-purple-core"
+                      required
+                    />
+                  )}
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-semibold text-text-muted">Working Hours</label>
+                  <select
+                    value={selectedHours}
+                    onChange={(e) => setSelectedHours(e.target.value)}
+                    className="w-full mt-1 bg-elevated border border-border-p rounded-xl px-3 py-2.5 text-sm text-warm-white outline-none focus:border-purple-core cursor-pointer"
+                  >
+                    <option value="< 35 hrs">&lt; 35 hrs</option>
+                    <option value="35–40 hrs">35–40 hrs</option>
+                    <option value="41–45 hrs">41–45 hrs</option>
+                    <option value="46–50 hrs">46–50 hrs</option>
+                    <option value="50+ hrs">50+ hrs</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-semibold text-text-muted">Work Type</label>
+                  <div className="grid grid-cols-3 gap-2 mt-1">
+                    {(["Office", "Remote", "Hybrid"] as const).map((type) => (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => setSelectedWorkType(type)}
+                        className={`py-2 px-3 rounded-xl border text-xs font-semibold cursor-pointer transition-all ${
+                          selectedWorkType === type
+                            ? "bg-purple-core/20 border-purple-core text-warm-white"
+                            : "bg-elevated border-border-p text-text-muted hover:border-border-s"
+                        }`}
+                      >
+                        {type}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setLinkStep("code")}
+                    className="flex-1 py-2.5 rounded-xl border border-border-p text-text-muted hover:text-warm-white text-xs font-semibold cursor-pointer transition-colors"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLinkStep("review")}
+                    disabled={!selectedDept.trim()}
+                    className="flex-1 btn-primary py-2.5 rounded-xl text-xs font-semibold cursor-pointer disabled:opacity-50"
+                  >
+                    Continue
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 3: Review Before Submit */}
+            {linkStep === "review" && verifiedOrg && (
+              <div className="space-y-4 text-left">
+                <p className="text-xs text-text-muted leading-relaxed">
+                  Please review the organisation details below before submitting your link request for HR review.
+                </p>
+
+                <div className="p-4 rounded-xl bg-elevated border border-border-p space-y-3">
+                  <div>
+                    <p className="text-[10px] uppercase font-semibold text-text-muted">Organisation</p>
+                    <p className="text-sm font-bold text-warm-white">{verifiedOrg.name}</p>
+                  </div>
+                  <div className="border-t border-border-p pt-2">
+                    <p className="text-[10px] uppercase font-semibold text-text-muted">Department</p>
+                    <p className="text-xs text-text-secondary font-medium">{selectedDept}</p>
+                  </div>
+                  <div className="border-t border-border-p pt-2">
+                    <p className="text-[10px] uppercase font-semibold text-text-muted">Working Hours</p>
+                    <p className="text-xs text-text-secondary font-medium">{selectedHours}</p>
+                  </div>
+                  <div className="border-t border-border-p pt-2">
+                    <p className="text-[10px] uppercase font-semibold text-text-muted">Work Type</p>
+                    <p className="text-xs text-text-secondary font-medium">{selectedWorkType}</p>
+                  </div>
+                </div>
+
+                {linkSubmitError && (
+                  <div className="p-3 rounded-xl bg-c-critical/15 border border-c-critical/30 text-c-critical text-xs">
+                    {linkSubmitError}
+                  </div>
+                )}
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setLinkStep("details")}
+                    disabled={linkSubmitting}
+                    className="flex-1 py-2.5 rounded-xl border border-border-p text-text-muted hover:text-warm-white text-xs font-semibold cursor-pointer transition-colors"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSubmitOrgLink}
+                    disabled={linkSubmitting}
+                    className="flex-1 btn-primary py-2.5 rounded-xl text-xs font-semibold cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  >
+                    {linkSubmitting ? "Sending…" : "Send Request"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 4: Submission Success / Pending State */}
+            {linkStep === "success" && verifiedOrg && (
+              <div className="space-y-4 text-left">
+                <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/25 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse-dot" />
+                    <p className="text-xs font-bold text-amber-400 uppercase tracking-wide">Status: Pending HR approval</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase font-semibold text-text-muted">Organisation</p>
+                    <p className="text-sm font-bold text-warm-white">{verifiedOrg.name}</p>
+                  </div>
+                </div>
+
+                <p className="text-xs text-text-secondary leading-relaxed">
+                  Your request has been sent to the HR administrator at {verifiedOrg.name}. You will be notified once they review and approve your membership.
+                </p>
+
+                <button
+                  type="button"
+                  onClick={resetLinkModal}
+                  className="w-full btn-primary py-2.5 rounded-xl text-xs font-semibold cursor-pointer"
+                >
+                  Done
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

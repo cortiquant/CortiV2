@@ -17,13 +17,12 @@ router.get("/latest", requireActiveEmployee, async (req, res) => {
   try {
     const user = req.user
 
-    // 1. Fetch employee's latest RootCauseAssessment (strict organisation/user scoping)
+    // 1. Fetch user's latest RootCauseAssessment (personal user scoping)
     const latestRc = await RootCauseAssessment.findOne({
       userId: user._id,
-      organisationId: user.organisationId,
     }).sort({ createdAt: -1 })
 
-    // If employee hasn't completed root-cause flow, return null so frontend shows default/pre-assessment state
+    // If user hasn't completed root-cause flow, return null so frontend shows default/pre-assessment state
     if (!latestRc) {
       return res.status(200).json({
         success: true,
@@ -31,10 +30,9 @@ router.get("/latest", requireActiveEmployee, async (req, res) => {
       })
     }
 
-    // 2. Check if recommendations already exist for this employee and assessment
+    // 2. Check if recommendations already exist for this user and assessment
     let recDoc = await Recommendation.findOne({
       employeeId: user._id,
-      organisationId: user.organisationId,
       assessmentId: latestRc._id,
     }).sort({ createdAt: -1 })
 
@@ -42,7 +40,6 @@ router.get("/latest", requireActiveEmployee, async (req, res) => {
     if (!recDoc) {
       recDoc = await Recommendation.findOne({
         employeeId: user._id,
-        organisationId: user.organisationId,
       }).sort({ createdAt: -1 })
 
       // Verify recDoc matches latest primaryCause

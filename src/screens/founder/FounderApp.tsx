@@ -70,6 +70,13 @@ function IconProfessionals({ active }: { active?: boolean }) {
     </svg>
   )
 }
+function IconB2CUsers({ active }: { active?: boolean }) {
+  return (
+    <svg className={`w-5 h-5 ${active ? "text-purple-core" : "text-gray-500"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+    </svg>
+  )
+}
 
 // ── Generic Table Page ────────────────────────────────────────────────────────
 
@@ -976,6 +983,7 @@ const HR_ADMINS = [
 interface DashboardStats {
   totalOrganisations: number
   totalEmployees: number
+  totalB2CUsers?: number
   assessmentsCompleted: number
   activeOrganisations: number
 }
@@ -1046,9 +1054,9 @@ function DashboardScreen() {
 
   const kpis = [
     { label: "Total Organisations", value: stats?.totalOrganisations },
-    { label: "Total Employees", value: stats?.totalEmployees },
+    { label: "Active Employees", value: stats?.totalEmployees },
+    { label: "B2C Users", value: stats?.totalB2CUsers ?? 0 },
     { label: "Assessments Completed", value: stats?.assessmentsCompleted },
-    { label: "Active Organisations", value: stats?.activeOrganisations },
   ]
 
   return (
@@ -3554,6 +3562,131 @@ function EmployeeDetailsModal({
   )
 }
 
+// ── B2C Users Screen ──────────────────────────────────────────────────────────
+
+function B2CUsersScreen() {
+  const [users, setUsers] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState("")
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchUsers = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await apiRequest("/api/admin/b2c-users")
+      const data = res.data
+      if (res.ok && data?.success && Array.isArray(data.users)) {
+        setUsers(data.users)
+      } else {
+        setUsers([])
+        setError(data?.message || "Unable to load B2C users. Please try again.")
+      }
+    } catch {
+      setUsers([])
+      setError("Unable to load B2C users. Please check your network connection.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchUsers()
+  }, [])
+
+  const filteredUsers = useMemo(() => {
+    if (!search.trim()) return users
+    const q = search.trim().toLowerCase()
+    return users.filter((u) => {
+      const name = (u.name || "").toLowerCase()
+      const email = (u.email || "").toLowerCase()
+      const username = (u.username || "").toLowerCase()
+      const orgName = (u.organisationName || "").toLowerCase()
+      const orgCode = (u.organisationCode || "").toLowerCase()
+      const status = (u.organisationStatus || "").toLowerCase()
+      return (
+        name.includes(q) ||
+        email.includes(q) ||
+        username.includes(q) ||
+        orgName.includes(q) ||
+        orgCode.includes(q) ||
+        status.includes(q)
+      )
+    })
+  }, [users, search])
+
+  return (
+    <TablePage
+      title="B2C Users"
+      desc="Overview of all personal B2C CortiQuant users who are not currently connected to an approved organisation."
+      columns={["User", "Email", "Organisation", "Org Link Status", "Account Status", "Joined Date"]}
+      data={filteredUsers}
+      searchValue={search}
+      onSearchChange={setSearch}
+      loading={loading}
+      emptyMessage={
+        error ? (
+          <div className="space-y-2">
+            <p className="text-red-600 font-medium text-xs">{error}</p>
+            <button
+              onClick={fetchUsers}
+              className="text-xs text-purple-700 hover:text-purple-800 font-semibold underline cursor-pointer"
+            >
+              Retry
+            </button>
+          </div>
+        ) : (
+          "No B2C users found."
+        )
+      }
+      renderRow={(u: any) => {
+        let statusBadge = (
+          <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">
+            Not Connected
+          </span>
+        )
+        if (u.rawOrgStatus === "pending") {
+          statusBadge = (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+              Pending HR Approval
+            </span>
+          )
+        } else if (u.rawOrgStatus === "rejected") {
+          statusBadge = (
+            <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200">
+              Rejected
+            </span>
+          )
+        }
+
+        return (
+          <>
+            <td className="px-6 py-4">
+              <p className="font-semibold text-gray-900">{u.name}</p>
+              {u.username && <p className="text-xs text-gray-400 mt-0.5">@{u.username}</p>}
+            </td>
+            <td className="px-6 py-4 text-gray-600">{u.email}</td>
+            <td className="px-6 py-4 text-gray-900">
+              <p className="font-medium">{u.organisationName}</p>
+              {u.organisationCode && (
+                <p className="font-mono text-[11px] text-gray-400">{u.organisationCode}</p>
+              )}
+            </td>
+            <td className="px-6 py-4">{statusBadge}</td>
+            <td className="px-6 py-4">
+              <StatusBadge status={u.accountStatus} />
+            </td>
+            <td className="px-6 py-4 text-gray-500 text-xs">
+              {u.createdAt ? new Date(u.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
+            </td>
+          </>
+        )
+      }}
+    />
+  )
+}
+
 function EmployeesScreen() {
   const [employees, setEmployees] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -3611,7 +3744,7 @@ function EmployeesScreen() {
     <>
       <TablePage
         title="Employees"
-        desc="Global view of all employees across organisations. Approval is managed by HR."
+        desc="Global view of approved organisation employees. Pure B2C users are managed under B2C Users."
         columns={["Employee", "Email", "Organisation", "Department", "Status", "Onboarding", ""]}
         data={filteredEmployees}
         searchValue={search}
@@ -4955,6 +5088,7 @@ export default function FounderApp() {
     { id: "hr-admins", path: "/founder/hr-admins", label: "HR Admins", icon: <IconAdmins active={currentPath === "hr-admins"} /> },
     { id: "listeners", path: "/founder/listeners", label: "Listeners", icon: <IconListeners active={currentPath === "listeners"} /> },
     { id: "professionals", path: "/founder/professionals", label: "Professionals", icon: <IconProfessionals active={currentPath === "professionals"} /> },
+    { id: "users", path: "/founder/users", label: "B2C Users", icon: <IconB2CUsers active={currentPath === "users"} /> },
     { id: "employees", path: "/founder/employees", label: "Employees", icon: <IconUsers active={currentPath === "employees"} /> },
     { id: "assessments", path: "/founder/assessments", label: "Assessments", icon: <IconAssessments active={currentPath === "assessments"} /> },
     { id: "activity-logs", path: "/founder/activity-logs", label: "Activity Logs", icon: <IconLogs active={currentPath === "activity-logs"} /> },
@@ -5062,6 +5196,7 @@ export default function FounderApp() {
             <Route path="hr-admins" element={<HRAdminsScreen />} />
             <Route path="listeners" element={<ListenersScreen />} />
             <Route path="professionals" element={<ProfessionalsScreen />} />
+            <Route path="users" element={<B2CUsersScreen />} />
             <Route path="employees" element={<EmployeesScreen />} />
             <Route path="assessments" element={<AssessmentsScreen />} />
             <Route path="activity-logs" element={<LogsScreen />} />

@@ -140,7 +140,7 @@ export default function AcceptInvitation() {
               </p>
             </div>
             <button
-              onClick={() => navigate("/company-login")}
+              onClick={() => navigate("/hr-login")}
               className="w-full bg-purple-core hover:bg-purple-700 text-white text-xs font-semibold py-3 rounded-xl transition-colors shadow-sm"
             >
               Sign In to HR Dashboard

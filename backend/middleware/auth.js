@@ -85,36 +85,44 @@ async function requireAuth(req, res, next) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// requireEmployee
-// Requires valid JWT AND role === 'employee'
+// requireUser / requireEmployee
+// Authenticated CortiQuant user access. Every authenticated user (B2C user or employee)
+// has full access to personal wellbeing functionality.
 // ─────────────────────────────────────────────────────────────────────────────
-async function requireEmployee(req, res, next) {
+async function requireUser(req, res, next) {
   requireAuth(req, res, (err) => {
     if (err) return next(err)
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: "Authentication required." })
+    }
     const role = (req.user?.role || "").toLowerCase()
-    if (role !== "employee") {
-      return res.status(403).json({ success: false, message: "Access restricted to employees." })
+    // Restrict only pure external listener accounts from user personal features
+    if (role === "listener") {
+      return res.status(403).json({ success: false, message: "Access restricted to CortiQuant user accounts." })
+    }
+    // Block disabled / inactive accounts
+    if (req.user?.status === "Disabled" || req.user?.status === "Inactive") {
+      return res.status(403).json({
+        success: false,
+        message: "Your account is inactive. Please contact support.",
+        status: req.user.status,
+      })
     }
     next()
   })
 }
 
+const requireEmployee = requireUser
+
 // ─────────────────────────────────────────────────────────────────────────────
 // requireActiveEmployee
-// Requires valid JWT AND role === 'employee' AND status === 'Active'
+// Personal features belong to the authenticated user.
+// Personal MSI, assessments, baseline, history, and recommendations are available
+// to every authenticated user. Organisation status/approval is ONLY required for
+// corporate/workplace employee features, never for personal wellbeing.
 // ─────────────────────────────────────────────────────────────────────────────
 async function requireActiveEmployee(req, res, next) {
-  requireEmployee(req, res, () => {
-    const status = req.user?.status
-    if (status !== "Active" && status !== "Approved") {
-      return res.status(403).json({
-        success: false,
-        message: "Account pending HR approval. Daily check-ins are restricted until activated.",
-        status: req.user?.status || "PendingApproval",
-      })
-    }
-    next()
-  })
+  requireUser(req, res, next)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -195,6 +203,7 @@ function signToken(userId, extra = {}) {
 
 module.exports = {
   requireAuth,
+  requireUser,
   requireEmployee,
   requireActiveEmployee,
   requireHR,

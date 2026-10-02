@@ -3,12 +3,13 @@ import logoSrc from "@/imports/image-2.png"
 
 interface LandingProps {
   onGetStarted: () => void
+  onHRLogin?: () => void
 }
 
 const NAV_LINKS = [
   { label: "Platform", id: "platform" },
-  { label: "For Employees", id: "employees" },
-  { label: "For HR", id: "hr" },
+  { label: "How It Works", id: "how-it-works" },
+  { label: "For You", id: "for-you" },
   { label: "Privacy", id: "privacy" },
 ]
 
@@ -20,77 +21,77 @@ function HeroIllustration() {
   return (
     <div className="relative w-full max-w-4xl mx-auto mt-16 px-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
-        {/* Employee preview */}
+        {/* Individual check-in preview */}
         <div className="animate-float" style={{ animationDelay: "0s" }}>
-          <div className="card-base p-5 max-w-[280px] mx-auto glow-subtle">
-            <div className="text-text-muted text-xs font-semibold uppercase tracking-widest mb-4">Employee · Check-in</div>
-            <p className="font-display text-lg text-warm-white mb-4 leading-snug">How are you feeling<br />right now?</p>
+          <div className="card-base p-6 max-w-[320px] mx-auto glow-subtle">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-text-muted text-xs font-semibold uppercase tracking-widest">Personal Check-in</span>
+              <span className="text-[10px] text-purple-300 font-mono-data bg-purple-core/15 px-2 py-0.5 rounded-full border border-purple-core/25">60 sec</span>
+            </div>
+            <p className="font-display text-lg text-warm-white mb-4 leading-snug">How is stress showing up for you right now?</p>
             <div className="flex flex-col gap-2">
-              {["Calm", "Okay", "Tense", "Stressed"].map((opt, i) => (
+              {[
+                { label: "Calm & Grounded", color: "border-border-p text-text-secondary" },
+                { label: "Mild Headspace Load", color: "border-border-p text-text-secondary" },
+                { label: "Cognitive Pressure", color: "border-purple-core bg-purple-core/15 text-lavender-soft" },
+                { label: "Need Recovery Time", color: "border-border-p text-text-secondary" },
+              ].map((opt, i) => (
                 <div
-                  key={opt}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border text-sm font-medium transition-all ${
-                    i === 2
-                      ? "border-purple-core bg-purple-core/15 text-lavender-soft"
-                      : "border-border-p text-text-secondary"
-                  }`}
+                  key={opt.label}
+                  className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl border text-xs font-medium transition-all ${opt.color}`}
                 >
                   <div className={`w-1.5 h-1.5 rounded-full ${i === 2 ? "bg-purple-core" : "bg-border-s"}`} />
-                  {opt}
+                  {opt.label}
                 </div>
               ))}
             </div>
             <div className="mt-4 h-px bg-border-p" />
-            <div className="mt-3 flex items-center gap-2">
-              <div className="w-4 h-4 rounded-full bg-c-success/20 flex items-center justify-center">
-                <div className="w-1.5 h-1.5 rounded-full bg-c-success" />
+            <div className="mt-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                </div>
+                <span className="text-[11px] text-text-muted">100% Private to you</span>
               </div>
-              <span className="text-xs text-text-muted">Private to you · takes a few seconds</span>
+              <span className="text-[11px] text-lavender-soft font-mono-data">MSI: 37</span>
             </div>
           </div>
         </div>
 
         {/* Connector */}
-        <div className="hidden md:block absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
+        <div className="hidden md:block absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 pointer-events-none">
           <div className="w-16 h-px bg-gradient-to-r from-purple-core/40 to-lavender-bright/40" />
           <div className="w-2 h-2 rounded-full bg-purple-core mx-auto -mt-1 animate-pulse-dot" />
         </div>
 
-        {/* HR preview */}
-        <div className="animate-float" style={{ animationDelay: "1.5s" }}>
-          <div className="card-base p-5 max-w-[320px] mx-auto glow-subtle">
-            <div className="text-text-muted text-xs font-semibold uppercase tracking-widest mb-4">HR · Overview</div>
+        {/* Personal MSI & Archetype preview */}
+        <div className="animate-float" style={{ animationDelay: "1.2s" }}>
+          <div className="card-base p-6 max-w-[320px] mx-auto glow-subtle">
             <div className="flex items-center justify-between mb-4">
+              <span className="text-text-muted text-xs font-semibold uppercase tracking-widest">Your Stress Pattern</span>
+              <span className="text-[10px] text-emerald-400 font-semibold bg-emerald-400/10 px-2 py-0.5 rounded-full border border-emerald-400/20">Optimal Range</span>
+            </div>
+            <div className="flex items-end justify-between mb-4">
               <div>
-                <p className="font-display text-2xl text-warm-white">62</p>
-                <p className="text-xs text-text-muted mt-0.5">Workforce MSI</p>
+                <p className="font-mono-data text-4xl text-warm-white font-bold">37<span className="text-lg text-purple-core font-normal">/100</span></p>
+                <p className="text-xs text-text-muted mt-1">Current Mind Stress Index (MSI)</p>
               </div>
               <div className="text-right">
-                <span className="inline-flex items-center gap-1 bg-c-warning/10 border border-c-warning/25 text-c-warning rounded-full px-2 py-0.5 text-xs font-semibold">
-                  ↑ 8%
-                </span>
-                <p className="text-xs text-text-muted mt-1">vs last week</p>
+                <p className="text-[11px] text-text-muted">Archetype</p>
+                <p className="text-xs font-semibold text-lavender-soft">The Deep Thinker</p>
               </div>
             </div>
-            <div className="space-y-2">
-              {[
-                { team: "People & Support", val: 71, change: "+12%", color: "bg-c-warning" },
-                { team: "Tech & Product", val: 58, change: "+4%", color: "bg-lavender-bright" },
-                { team: "Sales & Marketing", val: 53, change: "−2%", color: "bg-c-success" },
-              ].map((t) => (
-                <div key={t.team} className="flex items-center gap-3">
-                  <div className="flex-1">
-                    <div className="flex justify-between text-xs mb-1">
-                      <span className="text-text-secondary">{t.team}</span>
-                      <span className="font-mono-data text-text-muted">{t.val}</span>
-                    </div>
-                    <div className="h-1 bg-border-p rounded-full overflow-hidden">
-                      <div className={`h-full ${t.color} rounded-full opacity-70`} style={{ width: `${t.val}%` }} />
-                    </div>
-                  </div>
-                  <span className="text-xs text-text-muted w-10 text-right font-mono-data">{t.change}</span>
+
+            <div className="space-y-2 pt-2 border-t border-border-p">
+              <div className="bg-elevated/70 rounded-xl p-3 border border-border-p/80">
+                <div className="flex items-center justify-between text-xs mb-1">
+                  <span className="text-text-secondary font-medium">Recommended Reset</span>
+                  <span className="text-[10px] text-purple-core font-mono-data">3 mins</span>
                 </div>
-              ))}
+                <p className="text-[11px] text-text-muted leading-relaxed">
+                  Box Breathing + Cognitive Dump Bag to release lingering work loops.
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -106,7 +107,7 @@ function LoopStep({ step, label, sub, delay }: { step: string; label: string; su
         <span className="font-mono-data text-xs text-purple-core font-medium">{step}</span>
       </div>
       <p className="font-semibold text-warm-white text-sm mb-1">{label}</p>
-      <p className="text-xs text-text-muted max-w-[120px]">{sub}</p>
+      <p className="text-xs text-text-muted max-w-[140px] leading-relaxed">{sub}</p>
     </div>
   )
 }
@@ -120,30 +121,43 @@ function SectionLabel({ text }: { text: string }) {
   )
 }
 
-export default function Landing({ onGetStarted }: LandingProps) {
+export default function Landing({ onGetStarted, onHRLogin }: LandingProps) {
   return (
     <div className="min-h-full bg-midnight text-warm-white overflow-y-auto">
 
       {/* Nav */}
       <nav className="sticky top-0 z-40 border-b border-border-p bg-midnight/90 backdrop-blur-md">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <button onClick={() => scrollTo("hero")} className="focus:outline-none">
+          <button onClick={() => scrollTo("hero")} className="focus:outline-none cursor-pointer">
             <img src={logoSrc} alt="CortiQuant" className="h-8 object-contain" />
           </button>
+
           <div className="hidden md:flex items-center gap-8">
             {NAV_LINKS.map((l) => (
               <button
                 key={l.id}
                 onClick={() => scrollTo(l.id)}
-                className="text-sm text-text-muted hover:text-text-secondary transition-colors font-medium"
+                className="text-sm text-text-muted hover:text-text-secondary transition-colors font-medium cursor-pointer"
               >
                 {l.label}
               </button>
             ))}
           </div>
-          <button className="btn-primary px-5 py-2 text-sm" onClick={onGetStarted}>
-            Let's Get Started
-          </button>
+
+          <div className="flex items-center gap-4">
+            {/* Subtle secondary HR entry */}
+            <button
+              onClick={onHRLogin}
+              className="text-xs text-text-muted hover:text-lavender-soft transition-colors font-medium hidden sm:inline-block cursor-pointer px-2 py-1"
+            >
+              HR / Organisation Login
+            </button>
+
+            {/* Primary B2C Call to Action */}
+            <button className="btn-primary px-5 py-2 text-sm shadow-md cursor-pointer" onClick={onGetStarted}>
+              Get Started
+            </button>
+          </div>
         </div>
       </nav>
 
@@ -157,226 +171,206 @@ export default function Landing({ onGetStarted }: LandingProps) {
           <div className="flex justify-center mb-8">
             <img
               src={logoSrc}
-              alt="CortiQuant — Turning Invisible Stress into Actionable Insight"
-              className="h-40 md:h-52 object-contain animate-float"
+              alt="CortiQuant — Personal Stress & Wellbeing"
+              className="h-36 md:h-48 object-contain animate-float"
             />
           </div>
-          <h1 className="font-display text-5xl md:text-7xl text-warm-white leading-[1.1] mb-6">
-            Understand workforce<br />
-            <span className="text-gradient">stress.</span>{" "}
-            <span className="italic">Help people</span><br />
-            recover.
+
+          <h1 className="font-display text-4xl sm:text-5xl md:text-7xl text-warm-white leading-[1.15] mb-6">
+            Understand your stress.<br />
+            <span className="text-gradient">Feel more like</span>{" "}
+            <span className="italic">yourself.</span>
           </h1>
-          <p className="text-lg text-text-secondary max-w-2xl mx-auto mb-10 font-light leading-relaxed">
-            CortiQuant helps organizations measure workforce stress, identify emerging patterns,
-            deliver targeted recovery experiences — and understand what actually helps.
+
+          <p className="text-base sm:text-lg text-text-secondary max-w-2xl mx-auto mb-10 font-light leading-relaxed">
+            CortiQuant helps you understand how stress shows up in your everyday life,
+            track your stress patterns over time, and discover personalized ways to reset and recover.
           </p>
-          <button
-            className="btn-primary px-10 py-4 text-base"
-            onClick={onGetStarted}
-          >
-            Let's Get Started
-          </button>
+
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <button
+              className="btn-primary px-10 py-4 text-base shadow-lg hover:shadow-purple-500/20 transition-all cursor-pointer w-full sm:w-auto"
+              onClick={onGetStarted}
+            >
+              Get Started
+            </button>
+
+            <button
+              onClick={() => scrollTo("for-you")}
+              className="px-6 py-4 rounded-xl border border-border-p bg-surface/40 hover:bg-elevated text-sm text-text-muted hover:text-text-secondary transition-all cursor-pointer w-full sm:w-auto"
+            >
+              Explore Features ↓
+            </button>
+          </div>
+
+          {/* Subtext reassurance */}
+          <p className="text-xs text-text-muted/80 mt-6">
+            Private & confidential · Simple 60-second weekly check-in · Free to get started
+          </p>
         </div>
+
         <HeroIllustration />
       </section>
 
-      {/* Problem */}
-      <section className="py-24 border-t border-border-p">
-        <div className="max-w-4xl mx-auto px-6">
-          <SectionLabel text="The Problem" />
-          <div className="grid md:grid-cols-2 gap-12 items-center">
-            <div>
-              <h2 className="font-display text-4xl text-warm-white mb-5 leading-tight">
-                Organizations recognize stress<br />
-                <em>after</em> it becomes a problem.
-              </h2>
-              <p className="text-text-secondary leading-relaxed">
-                By the time burnout or turnover becomes visible, the pattern has often been building for weeks or months.
-                Traditional engagement surveys are infrequent and retrospective — not designed to catch emerging signals.
-              </p>
-            </div>
-            <div className="space-y-4">
-              {[
-                { icon: "⏱", label: "Weeks of undetected stress before HR notices", color: "text-c-warning" },
-                { icon: "📊", label: "Annual surveys miss real-time workforce patterns", color: "text-c-critical" },
-                { icon: "🔒", label: "Employees fear sharing genuine wellbeing data", color: "text-lavender-soft" },
-                { icon: "📉", label: "No way to measure whether interventions helped", color: "text-c-info" },
-              ].map((item) => (
-                <div key={item.label} className="card-base p-4 flex gap-4 items-start">
-                  <span className="text-xl mt-0.5">{item.icon}</span>
-                  <p className={`text-sm ${item.color} font-medium leading-snug`}>{item.label}</p>
+      {/* For You / Value Pillars */}
+      <section id="for-you" className="py-24 border-t border-border-p">
+        <div className="max-w-5xl mx-auto px-6">
+          <div className="text-center mb-16">
+            <SectionLabel text="For You" />
+            <h2 className="font-display text-3xl sm:text-4xl text-warm-white mb-4">
+              Everything you need to navigate stress with clarity
+            </h2>
+            <p className="text-text-secondary max-w-2xl mx-auto text-sm sm:text-base leading-relaxed font-light">
+              Stress is personal. CortiQuant gives you actionable tools to measure, understand, and ease mental tension on your own terms.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-6">
+            {/* Card 1 */}
+            <div className="card-base p-6 glow-subtle flex flex-col justify-between">
+              <div>
+                <div className="w-10 h-10 rounded-xl bg-purple-core/10 border border-purple-core/25 flex items-center justify-center mb-4 text-xl">
+                  📈
                 </div>
-              ))}
+                <h3 className="font-semibold text-lg text-warm-white mb-2">Track Your MSI Over Time</h3>
+                <p className="text-sm text-text-muted leading-relaxed mb-4">
+                  Establish your personal Mind Stress Index (MSI) baseline and observe how work, rest, and life shift your stress score across 7D, 30D, 3M, and 1Y.
+                </p>
+              </div>
+              <div className="text-xs text-purple-core font-medium pt-3 border-t border-border-p">
+                Real data · No synthetic points
+              </div>
+            </div>
+
+            {/* Card 2 */}
+            <div className="card-base p-6 glow-subtle flex flex-col justify-between">
+              <div>
+                <div className="w-10 h-10 rounded-xl bg-purple-core/10 border border-purple-core/25 flex items-center justify-center mb-4 text-xl">
+                  🧬
+                </div>
+                <h3 className="font-semibold text-lg text-warm-white mb-2">Discover Your Stress Archetype</h3>
+                <p className="text-sm text-text-muted leading-relaxed mb-4">
+                  Learn how your nervous system uniquely responds to pressure. Identify your stress personality archetype and uncover triggers before feeling overloaded.
+                </p>
+              </div>
+              <div className="text-xs text-purple-core font-medium pt-3 border-t border-border-p">
+                Personalized resonance & insights
+              </div>
+            </div>
+
+            {/* Card 3 */}
+            <div className="card-base p-6 glow-subtle flex flex-col justify-between">
+              <div>
+                <div className="w-10 h-10 rounded-xl bg-purple-core/10 border border-purple-core/25 flex items-center justify-center mb-4 text-xl">
+                  🫧
+                </div>
+                <h3 className="font-semibold text-lg text-warm-white mb-2">Personalized Reset Labs</h3>
+                <p className="text-sm text-text-muted leading-relaxed mb-4">
+                  Experience quick 2-to-5-minute micro-interventions: from guided somatic breathwork and musical unwinds to the cognitive Digital Dump Bag.
+                </p>
+              </div>
+              <div className="text-xs text-purple-core font-medium pt-3 border-t border-border-p">
+                Evidence-informed micro-resets
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Product Loop */}
-      <section id="platform" className="py-24 border-t border-border-p bg-deep-navy/40">
+      {/* Human Support */}
+      <section className="py-20 border-t border-border-p bg-deep-navy/30">
+        <div className="max-w-4xl mx-auto px-6">
+          <div className="grid md:grid-cols-2 gap-10 items-center">
+            <div>
+              <div className="inline-flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/25 rounded-full px-3 py-1 mb-4">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                <span className="text-xs font-semibold text-emerald-300 uppercase tracking-widest">Confidential Care</span>
+              </div>
+              <h2 className="font-display text-3xl sm:text-4xl text-warm-white mb-4 leading-snug">
+                Connect with human & professional support
+              </h2>
+              <p className="text-text-secondary text-sm leading-relaxed mb-6">
+                When stress feels too heavy to process alone, schedule 1-on-1 confidential chats with trained Peer Listeners or certified mental wellbeing professionals.
+              </p>
+              <div className="space-y-2.5">
+                {[
+                  "Safe, non-judgmental listening spaces",
+                  "10-minute focused reset sessions",
+                  "Verified professional consultations where available",
+                  "Never shared with your employer or anyone else",
+                ].map((item) => (
+                  <div key={item} className="flex items-center gap-2.5 text-xs text-text-secondary">
+                    <div className="w-4 h-4 rounded-full bg-purple-core/15 flex items-center justify-center text-[10px] text-purple-300">✓</div>
+                    <span>{item}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="card-base p-6 border-purple-core/20 bg-elevated/40">
+              <div className="text-xs text-text-muted uppercase tracking-wider mb-3">Support Preview</div>
+              <p className="text-warm-white font-medium text-base mb-2">"You don't have to carry this alone."</p>
+              <p className="text-xs text-text-muted leading-relaxed mb-4">
+                Whether you need a listening ear after a tough day or targeted coping strategies, CortiQuant connects you directly when you need it most.
+              </p>
+              <button onClick={onGetStarted} className="btn-secondary w-full py-2.5 text-xs font-semibold cursor-pointer">
+                Explore Support Options →
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* How it Works / Loop */}
+      <section id="how-it-works" className="py-24 border-t border-border-p">
         <div className="max-w-5xl mx-auto px-6 text-center">
           <SectionLabel text="How It Works" />
-          <h2 className="font-display text-4xl text-warm-white mb-4">The Cortiquant loop</h2>
-          <p className="text-text-muted mb-16 max-w-lg mx-auto">A continuous cycle from measurement to recovery to organizational learning.</p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-            <LoopStep step="01" label="Measure" sub="Quick employee check-ins. MSI calculated from baseline." delay="0ms" />
-            <LoopStep step="02" label="Understand" sub="Patterns, persistence, and what's driving stress signals." delay="80ms" />
-            <LoopStep step="03" label="Intervene" sub="Personalized recovery experiences matched to the signal." delay="160ms" />
-            <LoopStep step="04" label="Learn" sub="Pre/post measurement. HR sees what actually worked." delay="240ms" />
-          </div>
-          <div className="mt-12 flex items-center justify-center gap-3">
-            <div className="h-px w-16 bg-border-s" />
-            <span className="text-xs text-text-muted font-medium uppercase tracking-widest">Then repeat</span>
-            <div className="h-px w-16 bg-border-s" />
-          </div>
-        </div>
-      </section>
-
-      {/* Employee experience */}
-      <section id="employees" className="py-24 border-t border-border-p">
-        <div className="max-w-5xl mx-auto px-6">
-          <div className="grid md:grid-cols-2 gap-16 items-center">
-            <div>
-              <SectionLabel text="Employee Experience" />
-              <h2 className="font-display text-4xl text-warm-white mb-5 leading-tight">
-                A few seconds.<br />
-                <em>Immediate value.</em>
-              </h2>
-              <p className="text-text-secondary mb-8 leading-relaxed">
-                Cortiquant doesn't ask employees to spend time in an app. A quick check-in reveals personal
-                patterns and delivers a targeted recovery experience — then the employee moves on with their day.
-              </p>
-              <ul className="space-y-3">
-                {[
-                  "Check in with a few simple questions",
-                  "See your personal MSI vs. your baseline",
-                  "Receive a personalized reset suggestion",
-                  "Use the Digital Dump Bag to clear your mind",
-                  "Your data is private — never shared individually",
-                ].map((item) => (
-                  <li key={item} className="flex items-center gap-3 text-sm text-text-secondary">
-                    <div className="w-5 h-5 rounded-full bg-purple-core/15 border border-purple-core/30 flex items-center justify-center flex-shrink-0">
-                      <svg className="w-2.5 h-2.5 text-purple-core" fill="none" viewBox="0 0 10 10">
-                        <path d="M2 5l2.5 2.5L8 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    </div>
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="relative">
-              <div className="absolute -inset-8 bg-purple-primary/5 rounded-3xl blur-2xl" />
-              <div className="relative card-base p-6 glow-subtle max-w-xs mx-auto">
-                <div className="text-xs text-text-muted font-semibold uppercase tracking-widest mb-5">Your stress today</div>
-                <div className="flex items-end gap-4 mb-5">
-                  <div>
-                    <p className="font-mono-data text-5xl text-warm-white font-medium">68</p>
-                    <p className="text-sm text-c-warning font-medium mt-1">Elevated today</p>
-                  </div>
-                  <div className="pb-1 text-right text-xs text-text-muted space-y-1">
-                    <p>Baseline <span className="font-mono-data text-text-secondary">42</span></p>
-                    <p>Change <span className="font-mono-data text-c-warning">+26</span></p>
-                  </div>
-                </div>
-                <div className="text-sm text-text-secondary leading-relaxed mb-4">
-                  Your stress is noticeably higher than your usual range of 38–48.
-                </div>
-                <div className="h-px bg-border-p mb-4" />
-                <p className="text-xs text-text-muted font-semibold uppercase tracking-widest mb-3">What may help</p>
-                <div className="space-y-2">
-                  {["5-minute reset", "Digital Dump Bag", "Talk to someone"].map((a) => (
-                    <div key={a} className="bg-elevated border border-border-p rounded-xl px-3 py-2.5 text-sm text-text-secondary font-medium flex justify-between items-center">
-                      {a}
-                      <svg className="w-4 h-4 text-text-muted" fill="none" viewBox="0 0 16 16">
-                        <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* HR Intelligence */}
-      <section id="hr" className="py-24 border-t border-border-p bg-deep-navy/40">
-        <div className="max-w-5xl mx-auto px-6">
-          <div className="grid md:grid-cols-2 gap-16 items-center">
-            <div className="order-2 md:order-1">
-              <div className="card-base p-5 glow-subtle">
-                <div className="flex items-center justify-between mb-5">
-                  <div className="text-xs text-text-muted font-semibold uppercase tracking-widest">Workforce Wellbeing</div>
-                  <div className="flex gap-1">
-                    {["7D", "30D", "90D"].map((t, i) => (
-                      <button key={t} className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${i === 1 ? "bg-purple-core text-warm-white" : "text-text-muted"}`}>{t}</button>
-                    ))}
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3 mb-5">
-                  {[
-                    { label: "Workforce MSI", val: "62", sub: "↑ 8% vs last period", color: "text-c-warning" },
-                    { label: "Active Employees", val: "84%", sub: "Participation rate", color: "text-c-success" },
-                    { label: "Recovery Engagement", val: "47%", sub: "Used a reset this week", color: "text-lavender-soft" },
-                    { label: "Intervention Response", val: "+14%", sub: "Average improvement", color: "text-c-info" },
-                  ].map((m) => (
-                    <div key={m.label} className="card-elevated p-3 rounded-xl">
-                      <p className="text-xs text-text-muted mb-1">{m.label}</p>
-                      <p className={`font-mono-data text-xl font-medium ${m.color}`}>{m.val}</p>
-                      <p className="text-xs text-text-muted mt-0.5">{m.sub}</p>
-                    </div>
-                  ))}
-                </div>
-                <div className="bg-elevated border border-border-p rounded-xl p-4">
-                  <p className="text-xs text-text-muted font-semibold uppercase tracking-widest mb-2">What changed this week</p>
-                  <p className="text-sm text-text-secondary leading-relaxed">
-                    Stress increased moderately across the workforce, with the largest change in{" "}
-                    <span className="text-lavender-soft font-medium">People & Support</span>.
-                    Three weeks of elevated signal detected.
-                  </p>
-                  <p className="mt-3 text-xs text-text-muted">Real-time. Aggregated. Privacy-first.</p>
-                </div>
-              </div>
-            </div>
-            <div className="order-1 md:order-2">
-              <SectionLabel text="HR Intelligence" />
-              <h2 className="font-display text-4xl text-warm-white mb-5 leading-tight">
-                Finally understand<br />
-                <em>your workforce.</em>
-              </h2>
-              <p className="text-text-secondary leading-relaxed">
-                The HR experience gives you real-time visibility into workforce stress patterns — by team, by trend,
-                by intervention. Not individual surveillance. Aggregated intelligence that drives better decisions.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Privacy */}
-      <section id="privacy" className="py-24 border-t border-border-p">
-        <div className="max-w-4xl mx-auto px-6 text-center">
-          <SectionLabel text="Privacy" />
-          <h2 className="font-display text-4xl text-warm-white mb-5">Your wellbeing data is yours.</h2>
-          <p className="text-text-secondary max-w-2xl mx-auto mb-12 leading-relaxed">
-            Individual responses are private to the employee. Your organization receives aggregated insights
-            designed to understand workforce patterns — not to monitor individuals.
+          <h2 className="font-display text-4xl text-warm-white mb-4">The CortiQuant Personal Loop</h2>
+          <p className="text-text-muted mb-16 max-w-lg mx-auto">
+            A simple, non-intrusive routine that builds long-term self-awareness and recovery habits.
           </p>
-          <div className="grid md:grid-cols-3 gap-4">
-            {[
-              { role: "Employee", sees: "Their own individual data, trends, and private responses", icon: "👤", color: "border-lavender-soft/30" },
-              { role: "Manager", sees: "Aggregated team data only — no individual scores", icon: "👥", color: "border-c-info/30" },
-              { role: "HR", sees: "Aggregated organization data — workforce patterns, not people", icon: "🏢", color: "border-purple-core/30" },
-            ].map((item) => (
-              <div key={item.role} className={`card-base p-5 border ${item.color}`}>
-                <div className="text-2xl mb-3">{item.icon}</div>
-                <p className="font-semibold text-warm-white mb-2">{item.role}</p>
-                <p className="text-sm text-text-muted leading-relaxed">{item.sees}</p>
-              </div>
-            ))}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+            <LoopStep step="01" label="Check In" sub="Takes 60 seconds. Reflect on energy, mental load, and body." delay="0ms" />
+            <LoopStep step="02" label="Understand" sub="See your current MSI and what may be driving mental pressure." delay="80ms" />
+            <LoopStep step="03" label="Reset" sub="Get personalized recovery suggestions tailored to your score." delay="160ms" />
+            <LoopStep step="04" label="Restore" sub="Track shifts over time and feel more balanced in everyday life." delay="240ms" />
           </div>
+        </div>
+      </section>
+
+      {/* Privacy Guarantee */}
+      <section id="privacy" className="py-24 border-t border-border-p bg-deep-navy/40">
+        <div className="max-w-4xl mx-auto px-6 text-center">
+          <SectionLabel text="Your Privacy" />
+          <h2 className="font-display text-4xl text-warm-white mb-5">Your wellbeing data belongs to you.</h2>
+          <p className="text-text-secondary max-w-2xl mx-auto mb-10 leading-relaxed font-light">
+            Your individual responses, journal notes, check-ins, and scores are strictly confidential. We believe true self-reflection only happens when you know your data is secure.
+          </p>
+
+          <div className="grid md:grid-cols-3 gap-4 text-left">
+            <div className="card-base p-5 border border-lavender-soft/20">
+              <div className="text-2xl mb-3">🔒</div>
+              <p className="font-semibold text-warm-white mb-1.5">Strictly Private</p>
+              <p className="text-xs text-text-muted leading-relaxed">
+                Your assessments, Dump Bag reflections, and personal MSI scores are visible only to you.
+              </p>
+            </div>
+            <div className="card-base p-5 border border-purple-core/25">
+              <div className="text-2xl mb-3">🛡️</div>
+              <p className="font-semibold text-warm-white mb-1.5">No Surveillance</p>
+              <p className="text-xs text-text-muted leading-relaxed">
+                We never sell your data or share individual records with employers, managers, or third parties.
+              </p>
+            </div>
+            <div className="card-base p-5 border border-c-info/20">
+              <div className="text-2xl mb-3">✨</div>
+              <p className="font-semibold text-warm-white mb-1.5">Built For Recovery</p>
+              <p className="text-xs text-text-muted leading-relaxed">
+                Designed to nurture healthy routines and genuine self-care, free from anxiety or judgment.
+              </p>
+            </div>
+          </div>
+
           <div className="mt-8 text-center">
             <Link
               to="/privacy-policy"
@@ -388,52 +382,46 @@ export default function Landing({ onGetStarted }: LandingProps) {
         </div>
       </section>
 
-      {/* Reset Labs */}
-      <section className="py-24 border-t border-border-p bg-deep-navy/40">
-        <div className="max-w-5xl mx-auto px-6">
-          <div className="text-center mb-12">
-            <SectionLabel text="Reset Labs" />
-            <h2 className="font-display text-4xl text-warm-white mb-4">Small experiences that help minds recover.</h2>
-            <p className="text-text-muted max-w-lg mx-auto">Targeted group recovery sessions, matched to workforce patterns.</p>
-          </div>
-          <div className="grid md:grid-cols-3 gap-4">
-            {[
-              { name: "Acoustic Unwind", duration: "45 min", desc: "Structured sound designed to lower cognitive arousal.", gradient: "from-purple-primary/40 to-surface" },
-              { name: "Guided Breathwork", duration: "30 min", desc: "Evidence-informed breathing for acute stress reduction.", gradient: "from-c-info/30 to-surface" },
-              { name: "Mindful Movement", duration: "30 min", desc: "Gentle somatic movement for body-based recovery.", gradient: "from-c-success/20 to-surface" },
-            ].map((lab) => (
-              <div key={lab.name} className="card-base overflow-hidden">
-                <div className={`h-28 bg-gradient-to-br ${lab.gradient} flex items-end p-4`}>
-                  <div className="text-xs font-semibold text-text-muted uppercase tracking-widest">{lab.duration}</div>
-                </div>
-                <div className="p-4">
-                  <p className="font-semibold text-warm-white mb-1">{lab.name}</p>
-                  <p className="text-sm text-text-muted">{lab.desc}</p>
-                  <button className="mt-3 text-xs text-purple-core font-semibold hover:text-lavender-bright transition-colors">RSVP →</button>
-                </div>
-              </div>
-            ))}
+      {/* Secondary B2B / Organisation Section */}
+      <section id="platform" className="py-20 border-t border-border-p bg-surface/20">
+        <div className="max-w-4xl mx-auto px-6">
+          <div className="card-base p-8 border border-border-p/60 bg-elevated/30 flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="max-w-xl">
+              <div className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">For Organisations & Teams</div>
+              <h3 className="font-display text-2xl text-warm-white mb-3">
+                Looking to support wellbeing across your team?
+              </h3>
+              <p className="text-sm text-text-muted leading-relaxed font-light">
+                CortiQuant also helps organisations understand aggregated workplace wellbeing patterns while keeping all individual responses 100% private.
+              </p>
+            </div>
+            <button
+              onClick={onHRLogin}
+              className="px-6 py-3 rounded-xl border border-purple-core/30 bg-purple-core/10 hover:bg-purple-core/20 text-xs font-semibold text-lavender-soft hover:text-warm-white transition-all whitespace-nowrap cursor-pointer"
+            >
+              HR / Organisation Login →
+            </button>
           </div>
         </div>
       </section>
 
-      {/* CTA */}
-      <section className="py-32 border-t border-border-p">
+      {/* Final Call to Action */}
+      <section className="py-28 border-t border-border-p">
         <div className="max-w-3xl mx-auto px-6 text-center">
           <div className="relative">
             <div className="absolute inset-0 bg-purple-primary/10 rounded-3xl blur-3xl" />
-            <div className="relative card-base p-12 glow-purple">
-              <h2 className="font-display text-5xl text-warm-white mb-4 leading-tight">
-                Build a healthier workforce<br />
-                <em>with measurable recovery.</em>
+            <div className="relative card-base p-10 sm:p-14 glow-purple">
+              <h2 className="font-display text-4xl sm:text-5xl text-warm-white mb-4 leading-tight">
+                Take the first step toward<br />
+                <em>calmer, clearer days.</em>
               </h2>
-              <p className="text-text-secondary mb-8 text-lg">
-                Join organizations using CortiQuant to move from guessing to knowing.
+              <p className="text-text-secondary mb-8 text-base font-light max-w-lg mx-auto">
+                Begin with a quick check-in to establish your baseline and uncover how stress really affects your life.
               </p>
-              <button className="btn-primary px-10 py-4 text-base" onClick={onGetStarted}>
-                Let's Get Started
+              <button className="btn-primary px-10 py-4 text-base shadow-xl cursor-pointer" onClick={onGetStarted}>
+                Get Started
               </button>
-              <p className="text-xs text-text-muted mt-6">No long-term commitment required.</p>
+              <p className="text-xs text-text-muted mt-5">No credit card or company code required to begin.</p>
             </div>
           </div>
         </div>
@@ -441,10 +429,19 @@ export default function Landing({ onGetStarted }: LandingProps) {
 
       {/* Footer */}
       <footer className="border-t border-border-p py-12">
-        <div className="max-w-5xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-4">
-          <img src={logoSrc} alt="CortiQuant" className="h-7 object-contain" />
-          <p className="text-xs text-text-muted italic">Turning Invisible Stress into Actionable Insight</p>
-          <div className="flex gap-6 items-center">
+        <div className="max-w-5xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
+          <div className="flex items-center gap-3">
+            <img src={logoSrc} alt="CortiQuant" className="h-7 object-contain" />
+            <span className="text-xs text-text-muted">| Personal Stress & Wellbeing</span>
+          </div>
+
+          <div className="flex flex-wrap gap-6 items-center justify-center">
+            <button
+              onClick={onHRLogin}
+              className="text-xs text-text-muted hover:text-lavender-soft transition-colors cursor-pointer"
+            >
+              Organisation Portal
+            </button>
             <Link
               to="/privacy-policy"
               className="text-xs text-text-muted hover:text-warm-white transition-colors cursor-pointer"
@@ -469,3 +466,4 @@ export default function Landing({ onGetStarted }: LandingProps) {
     </div>
   )
 }
+

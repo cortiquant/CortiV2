@@ -12,7 +12,8 @@ const RecommendationSchema = new mongoose.Schema(
     organisationId: {
       type: mongoose.Schema.Types.Mixed,
       ref: "Organisation",
-      required: true,
+      required: false,
+      default: null,
       index: true,
     },
 

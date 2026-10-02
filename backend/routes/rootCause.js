@@ -91,7 +91,6 @@ router.get("/latest", requireActiveEmployee, async (req, res) => {
 
     const latest = await RootCauseAssessment.findOne({
       userId: user._id,
-      organisationId: user.organisationId,
     }).sort({ createdAt: -1 })
 
     return res.status(200).json({

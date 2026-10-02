@@ -449,8 +449,8 @@ router.post("/baseline", requireActiveEmployee, async (req, res) => {
       },
     })
   } catch (err) {
-    console.error("[ASSESSMENT] Error saving baseline assessment:", err.message)
-    res.status(500).json({ success: false, message: "Server error saving baseline assessment." })
+    console.error("[ASSESSMENT] Error saving baseline assessment:", err)
+    res.status(500).json({ success: false, message: err.message || "Server error saving baseline assessment." })
   }
 })
 

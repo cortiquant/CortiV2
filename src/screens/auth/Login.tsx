@@ -7,10 +7,11 @@ interface LoginProps {
   onCreateAccount: (name: string, username: string, email: string) => void
   onHR: () => void
   onBack: () => void
+  initialMode?: "employee" | "hr"
 }
 
 type Mode = "employee" | "hr"
-type Screen = "signin" | "join" | "create"
+type Screen = "signin" | "signup" | "forgot" | "check-email"
 
 function EmailIcon({ focused }: { focused: boolean }) {
   return (
@@ -151,9 +152,9 @@ function Checkbox({
 
 const API_BASE = ""
 
-export default function Login({ onEmployeeSignIn, onCreateAccount, onHR, onBack }: LoginProps) {
+export default function Login({ onEmployeeSignIn, onCreateAccount, onHR, onBack, initialMode = "employee" }: LoginProps) {
   const [screen, setScreen] = useState<Screen>("signin")
-  const [mode, setMode] = useState<Mode>("employee")
+  const [mode, setMode] = useState<Mode>(initialMode)
 
   // Sign-in fields
   const [employeeIdentifier, setEmployeeIdentifier] = useState("") // username or email
@@ -204,36 +205,11 @@ export default function Login({ onEmployeeSignIn, onCreateAccount, onHR, onBack 
     number: /[0-9]/.test(createPw),
   }
 
-  // ── Step 1: Verify Organisation Code ──
-  async function handleVerifyOrg() {
-    setErrorMsg("")
-    if (!orgCode.trim()) {
-      setErrorMsg("Please enter an Organisation Code.")
-      return
-    }
-
-    setVerifyingOrg(true)
-    try {
-      const res = await fetch(`${API_BASE}/api/auth/verify-organisation`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ organisationCode: orgCode.trim() }),
-      })
-      const data = await res.json()
-
-      if (!res.ok || !data.success || !data.organisation) {
-        setErrorMsg(data.message || "Invalid organisation code. Please check with your HR.")
-        return
-      }
-
-      setVerifiedOrg(data.organisation)
-      setScreen("create")
-    } catch {
-      setErrorMsg("Unable to verify organisation code. Please check your network connection.")
-    } finally {
-      setVerifyingOrg(false)
-    }
-  }
+  // Forgot password fields
+  const [forgotEmail, setForgotEmail] = useState("")
+  const [forgotEmailFocused, setForgotEmailFocused] = useState(false)
+  const [forgotSuccessMsg, setForgotSuccessMsg] = useState("")
+  const [resendCooldown, setResendCooldown] = useState(0)
 
   // ── Sign-in handler ──
   async function handleSignIn() {
@@ -242,71 +218,49 @@ export default function Login({ onEmployeeSignIn, onCreateAccount, onHR, onBack 
     abortRef.current = new AbortController()
 
     try {
-      if (mode === "employee") {
-        const res = await fetch(`${API_BASE}/api/auth/employee/login`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username: employeeIdentifier, password }),
-          signal: abortRef.current.signal,
-        })
-        const data = await res.json()
+      const res = await fetch(`${API_BASE}/api/auth/employee/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: employeeIdentifier, password }),
+        signal: abortRef.current.signal,
+      })
+      const data = await res.json()
 
-        if (!res.ok || !data.success) {
-          setErrorMsg(data.message || "Invalid username or password.")
-          return
-        }
-
-        // Store token & core user details from successful authentication
-        if (data.token) localStorage.setItem("cq_token", data.token)
-        if (data.user?.id) localStorage.setItem("cq_user_id", data.user.id)
-        if (data.user?.name) localStorage.setItem("cq_user_name", data.user.name)
-        if (data.user?.username) localStorage.setItem("cq_username", data.user.username)
-        if (data.user?.email) localStorage.setItem("cq_user_email", data.user.email)
-        if (data.user?.employeeId) localStorage.setItem("cq_employee_id", data.user.employeeId)
-        if (data.user?.organisationId) localStorage.setItem("cq_org_id", data.user.organisationId)
-        if (data.user?.organisationCode) localStorage.setItem("cq_org_code", data.user.organisationCode)
-        localStorage.setItem("cq_role", "employee")
-
-        // Map status
-        const rawStatus = data.status || data.user?.status || ""
-        if (rawStatus === "Active" || rawStatus === "Approved") {
-          localStorage.setItem("cq_approval_status", "approved")
-          localStorage.setItem("cq_onboarding_status", "complete")
-        } else if (rawStatus === "Rejected") {
-          localStorage.setItem("cq_approval_status", "rejected")
-          localStorage.setItem("cq_onboarding_status", "complete")
-        } else if (rawStatus === "PendingApproval" || rawStatus === "Pending") {
-          localStorage.setItem("cq_approval_status", "pending")
-          localStorage.setItem("cq_onboarding_status", "complete")
-        } else if (rawStatus === "OnboardingRequired") {
-          localStorage.setItem("cq_approval_status", "none")
-          localStorage.setItem("cq_onboarding_status", "incomplete")
-        } else {
-          localStorage.setItem("cq_approval_status", "pending")
-        }
-
-        onEmployeeSignIn()
-      } else {
-        // HR login
-        const res = await fetch(`${API_BASE}/api/auth/hr/login`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: hrEmail, password }),
-          signal: abortRef.current.signal,
-        })
-        const data = await res.json()
-
-        if (!res.ok || !data.success) {
-          setErrorMsg(data.message || "HR sign in failed.")
-          return
-        }
-
-        localStorage.setItem("cq_token", data.token)
-        localStorage.setItem("cq_user_name", data.user.name)
-        localStorage.setItem("cq_user_email", data.user.email)
-        localStorage.setItem("cq_role", data.user.role)
-        onHR()
+      if (!res.ok || !data.success) {
+        setErrorMsg(data.message || "Invalid username or password.")
+        return
       }
+
+      // Store token & core user details from successful authentication
+      if (data.token) localStorage.setItem("cq_token", data.token)
+      if (data.user?.id) localStorage.setItem("cq_user_id", data.user.id)
+      if (data.user?.name) localStorage.setItem("cq_user_name", data.user.name)
+      if (data.user?.username) localStorage.setItem("cq_username", data.user.username)
+      if (data.user?.email) localStorage.setItem("cq_user_email", data.user.email)
+      if (data.user?.employeeId) localStorage.setItem("cq_employee_id", data.user.employeeId)
+      if (data.user?.organisationId) localStorage.setItem("cq_org_id", data.user.organisationId)
+      if (data.user?.organisationCode) localStorage.setItem("cq_org_code", data.user.organisationCode)
+      localStorage.setItem("cq_role", "employee")
+
+      // Map status
+      const rawStatus = data.status || data.user?.status || ""
+      if (rawStatus === "Active" || rawStatus === "Approved") {
+        localStorage.setItem("cq_approval_status", "approved")
+        localStorage.setItem("cq_onboarding_status", "complete")
+      } else if (rawStatus === "Rejected") {
+        localStorage.setItem("cq_approval_status", "rejected")
+        localStorage.setItem("cq_onboarding_status", "complete")
+      } else if (rawStatus === "PendingApproval" || rawStatus === "Pending") {
+        localStorage.setItem("cq_approval_status", "pending")
+        localStorage.setItem("cq_onboarding_status", "complete")
+      } else if (rawStatus === "OnboardingRequired") {
+        localStorage.setItem("cq_approval_status", "none")
+        localStorage.setItem("cq_onboarding_status", "incomplete")
+      } else {
+        localStorage.setItem("cq_approval_status", "approved")
+      }
+
+      onEmployeeSignIn()
     } catch (err: unknown) {
       if (err instanceof Error && err.name !== "AbortError") {
         setErrorMsg("Cannot connect to server. Please try again.")
@@ -316,44 +270,81 @@ export default function Login({ onEmployeeSignIn, onCreateAccount, onHR, onBack 
     }
   }
 
-  const backLabel = screen === "create" ? "← Back to org code" : screen === "join" ? "← Back to sign in" : "← Back to home"
-  function handleBack() {
+  // ── Forgot Password Request Handler ──
+  async function handleRequestPasswordReset(isResend = false) {
+    if (isResend && resendCooldown > 0) return
     setErrorMsg("")
-    if (screen === "create") setScreen("join")
-    else if (screen === "join") setScreen("signin")
-    else onBack()
-  }
 
-  // ── Step 2: Create Account ──
-  async function handleCreateAccount() {
-    setErrorMsg("")
-    if (!verifiedOrg) {
-      setErrorMsg("Please verify your Organisation Code first.")
-      setScreen("join")
+    const clean = forgotEmail.trim()
+    if (!clean) {
+      setErrorMsg("Please enter your registered email address.")
       return
     }
 
+    setLoading(true)
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/forgot-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: clean }),
+      })
+      await res.json()
+
+      // Regardless of server status (to prevent user enumeration), advance to "check-email"
+      setScreen("check-email")
+      setResendCooldown(60)
+
+      // Start cooldown timer
+      const timer = setInterval(() => {
+        setResendCooldown((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer)
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1000)
+    } catch {
+      setErrorMsg("Unable to reach the server. Please check your internet connection.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // ── B2C Individual User Account Creation ──
+  async function handleCreateAccount() {
+    setErrorMsg("")
+
+    const cleanName = fullName.trim()
+    const cleanUsername = username.trim().toLowerCase()
     const cleanEmail = email.trim().toLowerCase()
+
+    if (!cleanName) {
+      setErrorMsg("Full name is required.")
+      return
+    }
+    if (!cleanUsername) {
+      setErrorMsg("Username is required.")
+      return
+    }
     if (!cleanEmail) {
       setErrorMsg("Email address is required.")
       return
     }
-
     if (!isEmailValid) {
       setErrorMsg("Please provide a valid email address.")
       return
     }
-
-    if (!agreePrivacy && !agreeConsent) {
+    if (!createPw) {
+      setErrorMsg("Password is required.")
+      return
+    }
+    if (createPw !== confirmPw) {
+      setErrorMsg("Passwords do not match.")
+      return
+    }
+    if (!agreePrivacy || !agreeConsent) {
       setErrorMsg("Please agree to both the Privacy Policy and Participant Consent Form to proceed.")
-      return
-    }
-    if (!agreePrivacy) {
-      setErrorMsg("Please read and agree to the Privacy Policy to create your account.")
-      return
-    }
-    if (!agreeConsent) {
-      setErrorMsg("Please read and agree to the Participant Consent Form to create your account.")
       return
     }
 
@@ -361,13 +352,12 @@ export default function Login({ onEmployeeSignIn, onCreateAccount, onHR, onBack 
     abortRef.current = new AbortController()
 
     try {
-      const res = await fetch(`${API_BASE}/api/auth/employee/signup`, {
+      const res = await fetch(`${API_BASE}/api/auth/signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          organisationCode: verifiedOrg.organisationCode,
-          name: fullName.trim(),
-          username: username.trim().toLowerCase(),
+          name: cleanName,
+          username: cleanUsername,
           email: cleanEmail,
           password: createPw,
           privacyConsent: agreePrivacy,
@@ -382,24 +372,32 @@ export default function Login({ onEmployeeSignIn, onCreateAccount, onHR, onBack 
         return
       }
 
-      // Store authenticated session token so employee can immediately complete Corporate Onboarding
       if (data.token) localStorage.setItem("cq_token", data.token)
       localStorage.setItem("cq_user_name", data.user.name)
       if (data.user.username) localStorage.setItem("cq_username", data.user.username)
       if (data.user.email) localStorage.setItem("cq_user_email", data.user.email)
       localStorage.setItem("cq_user_id", data.user.id)
-      localStorage.setItem("cq_org_id", data.user.organisationId)
-      localStorage.setItem("cq_org_code", data.user.organisationCode)
-      localStorage.setItem("cq_approval_status", "none")
-      localStorage.setItem("cq_onboarding_status", "incomplete")
+      localStorage.setItem("cq_role", "employee")
+      localStorage.setItem("cq_approval_status", "approved")
+      localStorage.setItem("cq_onboarding_status", "complete")
 
-      onCreateAccount(fullName, username, cleanEmail)
+      onCreateAccount(cleanName, cleanUsername, cleanEmail)
     } catch (err: unknown) {
       if (err instanceof Error && err.name !== "AbortError") {
         setErrorMsg("Cannot connect to server. Please try again.")
       }
     } finally {
       setLoading(false)
+    }
+  }
+
+  const backLabel = screen === "signup" || screen === "forgot" || screen === "reset" ? "← Back to sign in" : "← Back to home"
+  function handleBack() {
+    setErrorMsg("")
+    if (screen === "signup" || screen === "forgot" || screen === "reset") {
+      setScreen("signin")
+    } else {
+      onBack()
     }
   }
 
@@ -420,146 +418,81 @@ export default function Login({ onEmployeeSignIn, onCreateAccount, onHR, onBack 
 
         {/* ── Sign-in screen ── */}
         {screen === "signin" && (
-          <>
-            <div className="flex gap-1 bg-surface border border-border-p rounded-xl p-1 mb-8">
-              {(["employee", "hr"] as Mode[]).map((m) => (
-                <button
-                  key={m}
-                  onClick={() => { setMode(m); setErrorMsg(""); }}
-                  className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ${mode === m ? "bg-purple-core text-warm-white" : "text-text-muted hover:text-text-secondary"}`}
-                >
-                  {m === "employee" ? "Employee" : "HR Team"}
-                </button>
-              ))}
+          <div className="card-base p-8 glow-subtle">
+            <div className="inline-flex items-center gap-2 bg-purple-core/10 border border-purple-core/25 rounded-full px-4 py-1.5 mb-6">
+              <div className="w-1.5 h-1.5 rounded-full bg-purple-core animate-pulse-dot" />
+              <span className="text-xs font-semibold text-lavender-bright uppercase tracking-widest">
+                User Sign-In
+              </span>
             </div>
 
-            <div className="card-base p-8 glow-subtle">
-              <div className="inline-flex items-center gap-2 bg-purple-core/10 border border-purple-core/25 rounded-full px-4 py-1.5 mb-6">
-                <div className="w-1.5 h-1.5 rounded-full bg-purple-core animate-pulse-dot" />
-                <span className="text-xs font-semibold text-lavender-bright uppercase tracking-widest">
-                  {mode === "employee" ? "Employee Sign-In" : "HR Sign-In"}
-                </span>
-              </div>
-
-              <h1 className="text-3xl font-bold text-warm-white mb-1">Sign in with your</h1>
-              <h1 className="font-display text-3xl italic text-gradient mb-3">{mode === "employee" ? "username" : "email"}</h1>
-              <p className="text-sm text-text-muted mb-8 leading-relaxed">
-                {mode === "employee"
-                  ? "Use the username chosen during your workspace sign-up."
-                  : "Use your HR administrator credentials to access the workforce dashboard."}
-              </p>
-
-              <div className="space-y-3 mb-4">
-                <InputRow
-                  icon={mode === "employee" ? <PersonIcon focused={usernameFocused} /> : <EmailIcon focused={usernameFocused} />}
-                  type={mode === "employee" ? "text" : "email"}
-                  placeholder={mode === "employee" ? "Enter your username" : "Enter your email"}
-                  value={mode === "employee" ? employeeIdentifier : hrEmail}
-                  onChange={mode === "employee" ? setEmployeeIdentifier : setHrEmail}
-                  focused={usernameFocused}
-                  onFocus={() => setUsernameFocused(true)}
-                  onBlur={() => setUsernameFocused(false)}
-                />
-                <InputRow
-                  icon={<LockIcon focused={passwordFocused} />}
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Password"
-                  value={password}
-                  onChange={setPassword}
-                  focused={passwordFocused}
-                  onFocus={() => setPasswordFocused(true)}
-                  onBlur={() => setPasswordFocused(false)}
-                  suffix={<EyeToggle show={showPassword} onToggle={() => setShowPassword(!showPassword)} />}
-                />
-              </div>
-
-              {/* Error message */}
-              {errorMsg && (
-                <p className="text-xs text-c-critical bg-c-critical/10 border border-c-critical/25 rounded-xl px-4 py-2.5 mb-4">
-                  {errorMsg}
-                </p>
-              )}
-
-              <div className="flex items-start gap-2.5 mb-8">
-                <svg className="w-4 h-4 text-purple-core flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 20 20">
-                  <path d="M10 2l6.5 2.5v5c0 4-2.5 7-6.5 8.5C3.5 16.5 1 13.5 1 9.5v-5L10 2Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
-                  <path d="M7 10l2 2 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                <p className="text-xs text-text-muted leading-relaxed">
-                  Your responses are private. Only anonymised insights are shared with your organisation.
-                </p>
-              </div>
-
-              <button
-                className="btn-primary w-full py-3.5 text-sm flex items-center justify-center gap-2 mb-5 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                onClick={handleSignIn}
-                disabled={loading}
-              >
-                {loading ? "Signing in…" : "Sign in"}
-                {!loading && (
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 16 16">
-                    <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                )}
-              </button>
-
-              {mode === "employee" && (
-                <p className="text-center text-sm text-text-muted">
-                  {"Don't have an account? "}
-                  <button onClick={() => { setErrorMsg(""); setScreen("join"); }} className="text-lavender-bright font-semibold hover:text-lavender-soft transition-colors cursor-pointer">
-                    Join with Org Code
-                  </button>
-                </p>
-              )}
-            </div>
-          </>
-        )}
-
-        {/* ── Step 1: Join with Org Code screen ── */}
-        {screen === "join" && (
-          <div className="card-base p-8 glow-subtle animate-fade-up">
-            <div className="inline-flex items-center gap-2 bg-surface border border-border-s rounded-full px-4 py-1.5 mb-6">
-              <span className="text-sm">🏢</span>
-              <span className="text-xs font-semibold text-text-secondary uppercase tracking-widest">Corporate Access</span>
-            </div>
-
-            <h1 className="text-3xl font-bold text-warm-white mb-1">Join your</h1>
-            <h1 className="font-display text-3xl italic text-gradient mb-4">organisation</h1>
-            <p className="text-sm text-text-muted leading-relaxed mb-8">
-              Enter the Organisation Code provided by your HR or People Team to begin
-              creating your CortiQuant workspace account.
+            <h1 className="text-3xl font-bold text-warm-white mb-1">Sign in to your</h1>
+            <h1 className="font-display text-3xl italic text-gradient mb-3">CortiQuant account</h1>
+            <p className="text-sm text-text-muted mb-8 leading-relaxed">
+              Enter your username or email address and password to access your personal dashboard.
             </p>
 
-            <div className="mb-2">
+            <div className="space-y-3 mb-4">
               <InputRow
-                icon={<LockIcon focused={orgFocused} />}
-                placeholder="Enter Organisation Code"
-                value={orgCode}
-                onChange={(v) => setOrgCode(v.toUpperCase())}
-                focused={orgFocused}
-                onFocus={() => setOrgFocused(true)}
-                onBlur={() => setOrgFocused(false)}
-                mono
+                icon={<PersonIcon focused={usernameFocused} />}
+                type="text"
+                placeholder="Enter your username or email"
+                value={employeeIdentifier}
+                onChange={setEmployeeIdentifier}
+                focused={usernameFocused}
+                onFocus={() => setUsernameFocused(true)}
+                onBlur={() => setUsernameFocused(false)}
               />
+              <InputRow
+                icon={<LockIcon focused={passwordFocused} />}
+                type={showPassword ? "text" : "password"}
+                placeholder="Password"
+                value={password}
+                onChange={setPassword}
+                focused={passwordFocused}
+                onFocus={() => setPasswordFocused(true)}
+                onBlur={() => setPasswordFocused(false)}
+                suffix={<EyeToggle show={showPassword} onToggle={() => setShowPassword(!showPassword)} />}
+              />
+              <div className="flex justify-end mt-1 mb-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setErrorMsg("")
+                    setForgotSuccessMsg("")
+                    setScreen("forgot")
+                  }}
+                  className="text-xs text-lavender-bright hover:text-lavender-soft transition-colors cursor-pointer"
+                >
+                  Forgot password?
+                </button>
+              </div>
             </div>
-            <p className="text-xs text-text-muted mb-6 px-1">
-              You can obtain this code from your HR or People Team. (Example: TEST4524)
-            </p>
 
             {/* Error message */}
             {errorMsg && (
-              <p className="text-xs text-c-critical bg-c-critical/10 border border-c-critical/25 rounded-xl px-4 py-2.5 mb-6">
+              <p className="text-xs text-c-critical bg-c-critical/10 border border-c-critical/25 rounded-xl px-4 py-2.5 mb-4">
                 {errorMsg}
               </p>
             )}
 
+            <div className="flex items-start gap-2.5 mb-8">
+              <svg className="w-4 h-4 text-purple-core flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 20 20">
+                <path d="M10 2l6.5 2.5v5c0 4-2.5 7-6.5 8.5C3.5 16.5 1 13.5 1 9.5v-5L10 2Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+                <path d="M7 10l2 2 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <p className="text-xs text-text-muted leading-relaxed">
+                Your responses, assessments, and reset history are 100% private and confidential.
+              </p>
+            </div>
+
             <button
               className="btn-primary w-full py-3.5 text-sm flex items-center justify-center gap-2 mb-5 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-              onClick={handleVerifyOrg}
-              disabled={verifyingOrg || !orgCode.trim()}
+              onClick={handleSignIn}
+              disabled={loading}
             >
-              {verifyingOrg ? "Verifying…" : "Continue"}
-              {!verifyingOrg && (
+              {loading ? "Signing in…" : "Sign in"}
+              {!loading && (
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 16 16">
                   <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
@@ -567,42 +500,136 @@ export default function Login({ onEmployeeSignIn, onCreateAccount, onHR, onBack 
             </button>
 
             <p className="text-center text-sm text-text-muted">
-              Already have an account?{" "}
-              <button onClick={() => { setErrorMsg(""); setScreen("signin"); }} className="text-lavender-bright font-semibold hover:text-lavender-soft transition-colors cursor-pointer">
+              {"Don't have an account? "}
+              <button
+                type="button"
+                onClick={() => {
+                  setErrorMsg("")
+                  setScreen("signup")
+                }}
+                className="text-lavender-bright font-semibold hover:text-lavender-soft transition-colors cursor-pointer"
+              >
+                Sign up
+              </button>
+            </p>
+          </div>
+        )}
+
+        {/* ── Forgot Password Screen ── */}
+        {screen === "forgot" && (
+          <div className="card-base p-8 glow-subtle animate-fade-up">
+            <div className="inline-flex items-center gap-2 bg-purple-core/10 border border-purple-core/25 rounded-full px-4 py-1.5 mb-6">
+              <span className="text-xs font-semibold text-lavender-bright uppercase tracking-widest">
+                Password Recovery
+              </span>
+            </div>
+
+            <h1 className="text-3xl font-bold text-warm-white mb-1">Reset your</h1>
+            <h1 className="font-display text-3xl italic text-gradient mb-3">password</h1>
+            <p className="text-sm text-text-muted mb-6 leading-relaxed">
+              Enter your email address and we'll send you a secure link to reset your password.
+            </p>
+
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-text-secondary mb-1.5">Email address</label>
+              <InputRow
+                icon={<EmailIcon focused={forgotEmailFocused} />}
+                type="email"
+                placeholder="Enter your registered email address"
+                value={forgotEmail}
+                onChange={setForgotEmail}
+                focused={forgotEmailFocused}
+                onFocus={() => setForgotEmailFocused(true)}
+                onBlur={() => setForgotEmailFocused(false)}
+              />
+            </div>
+
+            {errorMsg && (
+              <p className="text-xs text-c-critical bg-c-critical/10 border border-c-critical/25 rounded-xl px-4 py-2.5 mb-4 animate-shake">
+                {errorMsg}
+              </p>
+            )}
+
+            <button
+              className="btn-primary w-full py-3.5 text-sm flex items-center justify-center gap-2 mb-5 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              onClick={() => handleRequestPasswordReset(false)}
+              disabled={loading || !forgotEmail.trim()}
+            >
+              {loading ? "Sending reset link…" : "Send Reset Link"}
+            </button>
+
+            <p className="text-center text-sm text-text-muted">
+              Remember your password?{" "}
+              <button
+                type="button"
+                onClick={() => { setErrorMsg(""); setScreen("signin"); }}
+                className="text-lavender-bright font-semibold hover:text-lavender-soft transition-colors cursor-pointer"
+              >
                 Sign In
               </button>
             </p>
           </div>
         )}
 
-        {/* ── Step 2: Create Account screen ── */}
-        {screen === "create" && (
+        {/* ── Check Your Email Screen ── */}
+        {screen === "check-email" && (
+          <div className="card-base p-8 glow-subtle animate-fade-up text-center">
+            <div className="w-16 h-16 rounded-full bg-purple-core/10 border border-purple-core/25 flex items-center justify-center mx-auto mb-5">
+              <svg className="w-8 h-8 text-lavender-bright" fill="none" viewBox="0 0 24 24">
+                <path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+
+            <div className="inline-flex items-center gap-2 bg-purple-core/10 border border-purple-core/25 rounded-full px-4 py-1.5 mb-4">
+              <span className="text-xs font-semibold text-lavender-bright uppercase tracking-widest">
+                Check Your Email
+              </span>
+            </div>
+
+            <h1 className="text-2xl font-bold text-warm-white mb-2">Check your email</h1>
+            <p className="text-sm text-text-muted leading-relaxed mb-6">
+              If an account exists with this email address, we've sent you a password reset link.
+            </p>
+
+            <button
+              onClick={() => {
+                setErrorMsg("")
+                setScreen("signin")
+              }}
+              className="btn-primary w-full py-3.5 text-sm font-semibold rounded-xl cursor-pointer mb-4"
+            >
+              Return to Sign In
+            </button>
+
+            <div className="pt-2 border-t border-border-s/40 flex flex-col items-center">
+              <p className="text-xs text-text-muted mb-2">Didn't receive the email?</p>
+              <button
+                type="button"
+                disabled={loading || resendCooldown > 0}
+                onClick={() => handleRequestPasswordReset(true)}
+                className="text-xs font-medium text-lavender-bright hover:text-lavender-soft disabled:text-text-muted disabled:cursor-not-allowed transition-colors cursor-pointer"
+              >
+                {resendCooldown > 0 ? `Resend Reset Link (${resendCooldown}s)` : "Resend Reset Link"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── B2C Individual User Sign-Up Screen ── */}
+        {screen === "signup" && (
           <div className="card-base p-8 glow-subtle animate-fade-up">
             <div className="inline-flex items-center gap-2 bg-purple-core/10 border border-purple-core/25 rounded-full px-4 py-1.5 mb-4">
               <div className="w-1.5 h-1.5 rounded-full bg-purple-core animate-pulse-dot" />
               <span className="text-xs font-semibold text-lavender-bright uppercase tracking-widest">
-                Account Setup
+                Create Account
               </span>
             </div>
 
-            <h1 className="text-3xl font-bold text-warm-white mb-1">Create your</h1>
-            <h1 className="font-display text-3xl italic text-gradient mb-3">account</h1>
-
-            {/* Verified Organisation Banner (Read-only) */}
-            {verifiedOrg && (
-              <div className="bg-surface/80 border border-border-s rounded-2xl p-4 mb-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[11px] uppercase tracking-wider text-text-muted font-semibold">Organisation</p>
-                    <p className="text-sm font-bold text-warm-white mt-0.5">{verifiedOrg.name}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[11px] uppercase tracking-wider text-text-muted font-semibold">Code</p>
-                    <p className="text-xs font-mono font-bold text-lavender-bright mt-0.5">{verifiedOrg.organisationCode}</p>
-                  </div>
-                </div>
-              </div>
-            )}
+            <h1 className="text-3xl font-bold text-warm-white mb-1">Join</h1>
+            <h1 className="font-display text-3xl italic text-gradient mb-3">CortiQuant</h1>
+            <p className="text-sm text-text-muted mb-6 leading-relaxed">
+              Create your personal account to understand your stress patterns and start your recovery journey.
+            </p>
 
             <div className="space-y-3 mb-4">
               <div>
@@ -636,7 +663,7 @@ export default function Login({ onEmployeeSignIn, onCreateAccount, onHR, onBack 
                 <InputRow
                   icon={<EmailIcon focused={emailFocused} />}
                   type="email"
-                  placeholder="name@company.com"
+                  placeholder="you@example.com"
                   value={email}
                   onChange={(val) => {
                     setEmail(val)
@@ -655,7 +682,7 @@ export default function Login({ onEmployeeSignIn, onCreateAccount, onHR, onBack 
                   <p className="text-[11px] text-c-critical mt-1 px-1">Email address is required.</p>
                 )}
                 {emailTouched && email.trim() && !isEmailValid && (
-                  <p className="text-[11px] text-c-critical mt-1 px-1">Please enter a valid email address (e.g. name@company.com).</p>
+                  <p className="text-[11px] text-c-critical mt-1 px-1">Please enter a valid email address.</p>
                 )}
               </div>
 
@@ -750,7 +777,7 @@ export default function Login({ onEmployeeSignIn, onCreateAccount, onHR, onBack 
             )}
 
             <button
-              className="btn-primary w-full py-3.5 text-sm flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none cursor-pointer"
+              className="btn-primary w-full py-3.5 text-sm flex items-center justify-center gap-2 mb-4 disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none cursor-pointer"
               onClick={handleCreateAccount}
               disabled={loading || !fullName.trim() || !username.trim() || !email.trim() || !isEmailValid || !Object.values(pwReqs).every(Boolean) || createPw !== confirmPw}
             >
@@ -761,6 +788,17 @@ export default function Login({ onEmployeeSignIn, onCreateAccount, onHR, onBack 
                 </svg>
               )}
             </button>
+
+            <p className="text-center text-sm text-text-muted">
+              Already have an account?{" "}
+              <button
+                type="button"
+                onClick={() => { setErrorMsg(""); setScreen("signin"); }}
+                className="text-lavender-bright font-semibold hover:text-lavender-soft transition-colors cursor-pointer"
+              >
+                Sign In
+              </button>
+            </p>
           </div>
         )}
 
