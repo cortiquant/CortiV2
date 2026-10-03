@@ -364,10 +364,18 @@ router.post("/create-profile", requireActiveEmployee, async (req, res) => {
       details: `B2C personal profile completed for ${user.name} (@${user.username})`,
     })
 
+    const hasBaseline =
+      (Array.isArray(user.msi) && user.msi.some((item) => item.type === "baseline" && typeof item.score === "number")) ||
+      (user.baselineMsi !== null && user.baselineMsi !== undefined)
+
     return res.status(200).json({
       success: true,
       message: "Profile saved successfully.",
-      user: user.toSafeObject(),
+      hasBaseline,
+      user: {
+        ...user.toSafeObject(),
+        hasBaseline,
+      },
     })
   } catch (err) {
     console.error("[EMPLOYEE] POST /create-profile error:", err)

@@ -91,14 +91,27 @@ export async function requireActiveEmployeeLoader({ request }: { request?: Reque
         localStorage.setItem("cq_approval_status", "approved")
         localStorage.setItem("cq_onboarding_status", "complete")
 
-        const hasBaseline = data.hasBaseline || (data.user.baselineMsi !== null && data.user.baselineMsi !== undefined)
+        const msiArr = Array.isArray(data.user?.msi) ? data.user.msi : []
+        const hasBaselineInArray = msiArr.some((item: any) => item.type === "baseline" && typeof item.score === "number")
+        const hasBaseline = hasBaselineInArray || data.hasBaseline === true || (data.user?.baselineMsi !== null && data.user?.baselineMsi !== undefined)
+
         if (hasBaseline) {
-          localStorage.setItem("cq_baseline_msi", String(data.user.baselineMsi))
+          const baselineScore = data.user?.baselineMsi ?? msiArr.find((item: any) => item.type === "baseline")?.score
+          if (baselineScore != null) {
+            localStorage.setItem("cq_baseline_msi", String(baselineScore))
+          }
           if (isBaselinePath) {
             return redirect("/home")
           }
+          return null
+        } else {
+          localStorage.removeItem("cq_baseline_msi")
+          localStorage.removeItem("cq_current_msi")
+          if (!isBaselinePath) {
+            return redirect("/baseline")
+          }
+          return null
         }
-        return null
       } else if (rawStatus === "Rejected") {
         if (data.user?.organisationLink && data.user.organisationLink.status === "rejected") {
           // B2C user with rejected org link stays in normal app
@@ -420,11 +433,17 @@ function CompanyLoginScreen() {
             const rawStatus = data.user.status || data.status
             if (rawStatus === "Active" || rawStatus === "Approved") {
               localStorage.setItem("cq_approval_status", "approved")
-              const hasBaseline = data.hasBaseline || (data.user.baselineMsi !== null && data.user.baselineMsi !== undefined)
+              const msiArr = Array.isArray(data.user?.msi) ? data.user.msi : []
+              const hasBaselineInArray = msiArr.some((item: any) => item.type === "baseline" && typeof item.score === "number")
+              const hasBaseline = hasBaselineInArray || data.hasBaseline === true || (data.user?.baselineMsi !== null && data.user?.baselineMsi !== undefined)
+
               if (hasBaseline) {
-                localStorage.setItem("cq_baseline_msi", String(data.user.baselineMsi))
+                const bScore = data.user?.baselineMsi ?? msiArr.find((item: any) => item.type === "baseline")?.score
+                if (bScore != null) localStorage.setItem("cq_baseline_msi", String(bScore))
                 navigate("/home")
               } else {
+                localStorage.removeItem("cq_baseline_msi")
+                localStorage.removeItem("cq_current_msi")
                 navigate("/baseline")
               }
             } else if (rawStatus === "Rejected") {
@@ -464,14 +483,23 @@ function CompanyLoginScreen() {
   }
 
   function handleCreateAccount(name: string, username: string, email: string) {
+    // Clear any previous user's baseline and assessment state
+    localStorage.removeItem("cq_baseline_msi")
+    localStorage.removeItem("cq_current_msi")
+    localStorage.removeItem("cq_last_baseline_date")
+    localStorage.removeItem("cq_next_baseline_date")
+    localStorage.removeItem("cq_stress_assessments")
+    localStorage.removeItem("cq_latest_recommendations")
+    localStorage.removeItem("cq_latest_root_cause")
+    localStorage.removeItem("cq_onboarding_answers")
+    localStorage.removeItem("cq_onboarding_step")
+
     localStorage.setItem("cq_user_name", name)
     localStorage.setItem("cq_username", username)
     localStorage.setItem("cq_user_email", email)
     localStorage.setItem("cq_onboarding_status", "complete")
     localStorage.setItem("cq_approval_status", "approved")
     localStorage.setItem("cq_profile_completed", "false")
-    localStorage.removeItem("cq_onboarding_answers")
-    localStorage.removeItem("cq_onboarding_step")
 
     // Post-signup: show "Create Your Profile"
     navigate("/create-profile")

@@ -734,7 +734,9 @@ router.post("/employee/login", async (req, res) => {
       details: `Employee login: ${user.username || user.email}`,
     })
 
-    const hasBaseline = user.baselineMsi !== null && user.baselineMsi !== undefined
+    const hasBaseline =
+      (Array.isArray(user.msi) && user.msi.some((item) => item.type === "baseline" && typeof item.score === "number")) ||
+      (user.baselineMsi !== null && user.baselineMsi !== undefined)
 
     return res.status(200).json({
       success: true,
@@ -742,7 +744,10 @@ router.post("/employee/login", async (req, res) => {
       message: "Login successful.",
       onboardingRequired: false,
       hasBaseline,
-      user: user.toSafeObject(),
+      user: {
+        ...user.toSafeObject(),
+        hasBaseline,
+      },
       token,
     })
   } catch (err) {
@@ -762,12 +767,17 @@ router.get("/me", requireAuth, async (req, res) => {
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found." })
     }
-    const hasBaseline = user.baselineMsi !== null && user.baselineMsi !== undefined
+    const hasBaseline =
+      (Array.isArray(user.msi) && user.msi.some((item) => item.type === "baseline" && typeof item.score === "number")) ||
+      (user.baselineMsi !== null && user.baselineMsi !== undefined)
     return res.status(200).json({
       success: true,
       status: user.status,
       hasBaseline,
-      user: user.toSafeObject(),
+      user: {
+        ...user.toSafeObject(),
+        hasBaseline,
+      },
     })
   } catch (err) {
     console.error("[AUTH] GET /me error:", err.message)

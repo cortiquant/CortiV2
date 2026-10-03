@@ -134,9 +134,50 @@ export default function CreateProfile() {
         localStorage.setItem("cq_username", cleanUsername)
         localStorage.setItem("cq_profile_completed", "true")
 
-        // Brief confirmation, then navigate to dashboard
+        // 1. Purge any stale baseline/MSI keys from localStorage
+        localStorage.removeItem("cq_baseline_msi")
+        localStorage.removeItem("cq_current_msi")
+        localStorage.removeItem("cq_last_baseline_date")
+        localStorage.removeItem("cq_next_baseline_date")
+
+        // 2. Obtain the authenticated user's fresh server-side profile and assessment state
+        let hasBaseline = false
+        try {
+          const [meRes, metricsRes] = await Promise.all([
+            fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } }),
+            fetch("/api/assessments/metrics", { headers: { Authorization: `Bearer ${token}` } }),
+          ])
+          const meData = await meRes.json()
+          const metricsData = await metricsRes.json()
+
+          const msiArr = Array.isArray(meData?.user?.msi)
+            ? meData.user.msi
+            : Array.isArray(metricsData?.data?.msi)
+            ? metricsData.data.msi
+            : []
+
+          hasBaseline =
+            msiArr.some((item: any) => item.type === "baseline" && typeof item.score === "number") ||
+            metricsData?.data?.hasBaseline === true ||
+            typeof metricsData?.data?.baselineMsi === "number"
+
+          if (hasBaseline) {
+            const baselineVal = metricsData?.data?.baselineMsi ?? meData?.user?.baselineMsi
+            if (baselineVal != null) {
+              localStorage.setItem("cq_baseline_msi", String(baselineVal))
+            }
+          }
+        } catch {
+          hasBaseline = false
+        }
+
+        // 3. Navigate accordingly: brand new users without baseline go directly to baseline onboarding
         setTimeout(() => {
-          navigate("/home")
+          if (!hasBaseline) {
+            navigate("/baseline")
+          } else {
+            navigate("/home")
+          }
         }, 800)
       } else {
         setErrorMsg(data.message || "Failed to save profile. Please check the fields and try again.")

@@ -15,15 +15,21 @@ const VALID_ARCHETYPES = [
 
 const MIN_PUBLIC_RESPONSES = 30
 
-/**
- * Normalizes user input archetype name to canonical format (e.g. "Slow Leak" -> "The Slow Leak")
- */
 function normalizeArchetype(name) {
   if (!name || typeof name !== "string") return null
   const trimmed = name.trim()
   if (VALID_ARCHETYPES.includes(trimmed)) return trimmed
   const withThe = `The ${trimmed}`
   if (VALID_ARCHETYPES.includes(withThe)) return withThe
+
+  const normalizedInput = trimmed.toLowerCase().replace(/_/g, " ")
+  const match = VALID_ARCHETYPES.find((a) => {
+    const aLower = a.toLowerCase()
+    const aWithoutThe = aLower.replace(/^the\s+/, "")
+    return aLower === normalizedInput || aWithoutThe === normalizedInput || `the ${normalizedInput}` === aLower
+  })
+  if (match) return match
+
   return null
 }
 
@@ -219,7 +225,10 @@ router.get("/analytics", requireAdmin, async (req, res) => {
     const analyticsByArchetype = {}
 
     for (const archetype of VALID_ARCHETYPES) {
-      const records = allValidations.filter((r) => r.archetype === archetype)
+      const records = allValidations.filter((r) => {
+        const canonical = normalizeArchetype(r.archetype)
+        return canonical === archetype || r.archetype === archetype
+      })
       const total = records.length
 
       if (total === 0) {
@@ -302,12 +311,35 @@ router.get("/analytics", requireAdmin, async (req, res) => {
           )
         : 0
 
+    const overallHighFitCount = allValidations.filter((r) => r.validationScore >= 4).length
+    const overallModerateFitCount = allValidations.filter((r) => r.validationScore === 3).length
+    const overallLowFitCount = allValidations.filter((r) => r.validationScore <= 2).length
+
+    const overallHighFitPct = overallTotal > 0 ? Math.round((overallHighFitCount / overallTotal) * 100) : 0
+    const overallModerateFitPct = overallTotal > 0 ? Math.round((overallModerateFitCount / overallTotal) * 100) : 0
+    const overallLowFitPct = overallTotal > 0 ? Math.round((overallLowFitCount / overallTotal) * 100) : 0
+
+    const archetypes = VALID_ARCHETYPES.map((name) => analyticsByArchetype[name])
+
+    const summary = {
+      totalResponses: overallTotal,
+      averageScore: overallAvg,
+      overallHighFitPct,
+      overallModerateFitPct,
+      overallLowFitPct,
+    }
+
     return res.status(200).json({
       success: true,
       data: {
         quizVersion,
         overallTotal,
         overallAverageScore: overallAvg,
+        overallHighFitPct,
+        overallModerateFitPct,
+        overallLowFitPct,
+        summary,
+        archetypes,
         byArchetype: analyticsByArchetype,
       },
     })

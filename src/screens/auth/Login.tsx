@@ -260,6 +260,25 @@ export default function Login({ onEmployeeSignIn, onCreateAccount, onHR, onBack,
         localStorage.setItem("cq_approval_status", "approved")
       }
 
+      // Clear any prior user's cached assessment/baseline state
+      localStorage.removeItem("cq_baseline_msi")
+      localStorage.removeItem("cq_current_msi")
+      localStorage.removeItem("cq_last_baseline_date")
+      localStorage.removeItem("cq_next_baseline_date")
+      localStorage.removeItem("cq_latest_root_cause")
+      localStorage.removeItem("cq_latest_recommendations")
+
+      const msiArr = Array.isArray(data.user?.msi) ? data.user.msi : []
+      const hasBaselineInArray = msiArr.some((item: any) => item.type === "baseline" && typeof item.score === "number")
+      const userHasBaseline = hasBaselineInArray || data.hasBaseline === true || (data.user?.baselineMsi != null)
+
+      if (userHasBaseline) {
+        const bScore = data.user?.baselineMsi ?? msiArr.find((item: any) => item.type === "baseline")?.score
+        if (bScore != null) {
+          localStorage.setItem("cq_baseline_msi", String(bScore))
+        }
+      }
+
       onEmployeeSignIn()
     } catch (err: unknown) {
       if (err instanceof Error && err.name !== "AbortError") {
@@ -380,6 +399,17 @@ export default function Login({ onEmployeeSignIn, onCreateAccount, onHR, onBack,
       localStorage.setItem("cq_role", "employee")
       localStorage.setItem("cq_approval_status", "approved")
       localStorage.setItem("cq_onboarding_status", "complete")
+
+      // Clear any previous user's baseline and assessment data so new user starts completely fresh
+      localStorage.removeItem("cq_baseline_msi")
+      localStorage.removeItem("cq_current_msi")
+      localStorage.removeItem("cq_last_baseline_date")
+      localStorage.removeItem("cq_next_baseline_date")
+      localStorage.removeItem("cq_stress_assessments")
+      localStorage.removeItem("cq_latest_recommendations")
+      localStorage.removeItem("cq_latest_root_cause")
+      localStorage.removeItem("cq_onboarding_answers")
+      localStorage.removeItem("cq_onboarding_step")
 
       onCreateAccount(cleanName, cleanUsername, cleanEmail)
     } catch (err: unknown) {

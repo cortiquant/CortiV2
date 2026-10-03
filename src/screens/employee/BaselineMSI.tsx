@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { getMSIBand } from "../../utils/msiClassification"
 
 interface BaselineMSIProps {
@@ -107,6 +107,31 @@ export default function BaselineMSI({ onComplete, onBack }: BaselineMSIProps) {
     return localStorage.getItem("cq_baseline_msi") != null
   })
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    const token = localStorage.getItem("cq_token")
+    if (!token) return
+
+    fetch("/api/assessments/baseline/eligibility", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.data) {
+          if (!data.data.hasBaseline) {
+            setIsUpdateFlow(false)
+            localStorage.removeItem("cq_baseline_msi")
+            localStorage.removeItem("cq_current_msi")
+          } else {
+            setIsUpdateFlow(true)
+            if (data.data.currentMsi != null) {
+              localStorage.setItem("cq_baseline_msi", String(data.data.currentMsi))
+            }
+          }
+        }
+      })
+      .catch(() => {})
+  }, [])
 
   const q = QUESTIONS[step]
   const section = SECTIONS.find((s) => s.id === q?.section)!
@@ -223,7 +248,7 @@ export default function BaselineMSI({ onComplete, onBack }: BaselineMSIProps) {
           </div>
 
           <h1 className="text-2xl font-bold text-warm-white mb-3">
-            {isUpdateFlow ? "Update Your Baseline MSI" : "Let's Find Your Baseline"}
+            {isUpdateFlow ? "Update Your Baseline MSI" : "Let's calculate your baseline MSI"}
           </h1>
           <p className="text-base text-lavender-soft font-medium mb-3">
             {isUpdateFlow

@@ -4061,6 +4061,78 @@ function AssessmentsScreen() {
   const [archetypeError, setArchetypeError] = useState<string | null>(null)
   const [selectedQuizVersion, setSelectedQuizVersion] = useState("v1")
 
+  // Dedicated flat Assessment Ledger state (separate M1–P4 columns)
+  const [ledgerRecords, setLedgerRecords] = useState<any[]>([])
+  const [ledgerLoading, setLedgerLoading] = useState(false)
+  const [ledgerError, setLedgerError] = useState<string | null>(null)
+  const [ledgerSearch, setLedgerSearch] = useState("")
+  const [ledgerType, setLedgerType] = useState<"all" | "baseline" | "weekly">("all")
+  const [ledgerSortOrder, setLedgerSortOrder] = useState<"desc" | "asc">("desc")
+  const [ledgerViewMode, setLedgerViewMode] = useState<"detailed" | "organisation">("detailed")
+
+  const fetchLedgerRecords = async () => {
+    setLedgerLoading(true)
+    setLedgerError(null)
+    try {
+      const params = new URLSearchParams()
+      if (ledgerSearch.trim()) params.append("search", ledgerSearch.trim())
+      if (ledgerType !== "all") params.append("type", ledgerType)
+      params.append("sortBy", "assessmentDate")
+      params.append("sortOrder", ledgerSortOrder)
+      params.append("limit", "250")
+
+      const res = await apiRequest(`/api/admin/assessment-ledger?${params.toString()}`)
+      const data = res.data
+      if (res.ok && data?.success && data.data?.records) {
+        setLedgerRecords(data.data.records)
+      } else {
+        setLedgerRecords([])
+        setLedgerError(data?.message || "Unable to load assessment ledger.")
+      }
+    } catch {
+      setLedgerRecords([])
+      setLedgerError("Unable to load assessment ledger. Check network connection.")
+    } finally {
+      setLedgerLoading(false)
+    }
+  }
+
+  const handleDownloadCsv = async () => {
+    try {
+      const params = new URLSearchParams()
+      if (ledgerSearch.trim()) params.append("search", ledgerSearch.trim())
+      if (ledgerType !== "all") params.append("type", ledgerType)
+      params.append("sortBy", "assessmentDate")
+      params.append("sortOrder", ledgerSortOrder)
+
+      const token = localStorage.getItem("cq_token")
+      const headers: Record<string, string> = {}
+      if (token) headers["Authorization"] = `Bearer ${token}`
+
+      const res = await fetch(`/api/admin/assessment-ledger/export?${params.toString()}`, {
+        headers,
+      })
+
+      if (!res.ok) {
+        alert("Failed to export assessment ledger CSV.")
+        return
+      }
+
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `assessment-ledger-${new Date().toISOString().split("T")[0]}.csv`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error("Export error:", err)
+      alert("Error exporting CSV.")
+    }
+  }
+
   const fetchAssessments = async () => {
     setLoading(true)
     setError(null)
@@ -4088,8 +4160,22 @@ function AssessmentsScreen() {
       const res = await apiRequest(`/api/archetype/analytics?quizVersion=${encodeURIComponent(selectedQuizVersion)}`)
       const data = res.data
       if (res.ok && data?.success && data.data) {
-        setArchetypeAnalytics(data.data.archetypes || [])
-        setArchetypeSummary(data.data.summary || null)
+        const archetypesList = Array.isArray(data.data.archetypes)
+          ? data.data.archetypes
+          : data.data.byArchetype
+            ? Object.values(data.data.byArchetype)
+            : []
+
+        const summaryData = data.data.summary || {
+          totalResponses: data.data.overallTotal ?? 0,
+          averageScore: data.data.overallAverageScore ?? 0,
+          overallHighFitPct: data.data.overallHighFitPct ?? 0,
+          overallModerateFitPct: data.data.overallModerateFitPct ?? 0,
+          overallLowFitPct: data.data.overallLowFitPct ?? 0,
+        }
+
+        setArchetypeAnalytics(archetypesList)
+        setArchetypeSummary(summaryData)
       } else {
         setArchetypeAnalytics([])
         setArchetypeError(data?.message || "Unable to load archetype resonance analytics.")
@@ -4105,6 +4191,12 @@ function AssessmentsScreen() {
   useEffect(() => {
     fetchAssessments()
   }, [])
+
+  useEffect(() => {
+    if (activeTab === "ledger" && ledgerViewMode === "detailed") {
+      fetchLedgerRecords()
+    }
+  }, [activeTab, ledgerViewMode, ledgerSearch, ledgerType, ledgerSortOrder])
 
   useEffect(() => {
     if (activeTab === "archetypes") {
@@ -4166,63 +4258,325 @@ function AssessmentsScreen() {
       </div>
 
       {activeTab === "ledger" ? (
-        <TablePage
-          title="Assessments"
-          desc="Global ledger of completed assessments across all organisations."
-          columns={["Employee", "Organisation", "Type", "Score", "Date", "Status", ""]}
-          data={filteredAssessments}
-          searchValue={search}
-          onSearchChange={setSearch}
-          loading={loading}
-          emptyMessage={
-            error ? (
-              <div className="space-y-2">
-                <p className="text-red-600 font-medium text-xs">{error}</p>
-                <button
-                  onClick={fetchAssessments}
-                  className="text-xs text-purple-700 hover:text-purple-800 font-semibold underline"
-                >
-                  Retry
-                </button>
+        <div className="space-y-4">
+          {/* Controls Bar */}
+          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex flex-1 flex-wrap items-center gap-3">
+              {/* Search */}
+              <div className="relative min-w-[200px] flex-1 max-w-sm">
+                <svg className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input
+                  type="text"
+                  placeholder="Search name, profession..."
+                  value={ledgerSearch}
+                  onChange={(e) => setLedgerSearch(e.target.value)}
+                  className="text-xs bg-gray-50 border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-gray-700 w-full focus:outline-none focus:ring-2 focus:ring-purple-core/20"
+                />
               </div>
-            ) : (
-              "No assessments found."
-            )
-          }
-          renderRow={(a: any) => (
-            <>
-              <td className="px-6 py-4">
-                <p className="font-semibold text-gray-900">{a.employeeName}</p>
-                <p className="font-mono text-xs text-gray-400 mt-0.5">{a.employeeId}</p>
-              </td>
-              <td className="px-6 py-4 text-gray-700">
-                <p className="font-medium text-gray-900">{a.organisationName}</p>
-                {a.organisationCode && (
-                  <p className="font-mono text-[11px] text-gray-400">{a.organisationCode}</p>
-                )}
-              </td>
-              <td className="px-6 py-4 text-gray-900 font-medium">{a.type}</td>
-              <td className="px-6 py-4 font-mono font-bold text-gray-800">
-                {a.scoreDisplay ?? (a.score !== null ? a.score : "N/A")}
-              </td>
-              <td className="px-6 py-4 text-gray-500 text-xs">
-                {a.date ? new Date(a.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
-              </td>
-              <td className="px-6 py-4">
-                <StatusBadge status={a.status} />
-              </td>
-              <td className="px-6 py-4 text-right">
+
+              {/* Assessment Type filter */}
+              <div className="flex items-center gap-1.5">
+                <label className="text-xs font-semibold text-gray-500">Type:</label>
+                <select
+                  value={ledgerType}
+                  onChange={(e) => setLedgerType(e.target.value as any)}
+                  className="text-xs bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-2 font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-core/20"
+                >
+                  <option value="all">All (Baseline & Weekly)</option>
+                  <option value="baseline">Baseline Only</option>
+                  <option value="weekly">Weekly Only</option>
+                </select>
+              </div>
+
+              {/* Sort Order */}
+              <button
+                type="button"
+                onClick={() => setLedgerSortOrder((prev) => (prev === "desc" ? "asc" : "desc"))}
+                className="text-xs bg-gray-50 hover:bg-gray-100 text-gray-700 font-medium px-3 py-2 rounded-lg border border-gray-200 transition-colors flex items-center gap-1 cursor-pointer"
+              >
+                <span>Date: {ledgerSortOrder === "desc" ? "Newest First ↓" : "Oldest First ↑"}</span>
+              </button>
+
+              {/* View Switcher */}
+              <div className="flex items-center bg-gray-100 p-0.5 rounded-lg border border-gray-200 text-[11px] font-semibold">
                 <button
                   type="button"
-                  onClick={() => setSelectedAssessmentId(a.id)}
-                  className="text-purple-600 hover:text-purple-800 font-medium text-xs bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-md transition-colors cursor-pointer"
+                  onClick={() => setLedgerViewMode("detailed")}
+                  className={`px-2.5 py-1.5 rounded-md transition-colors cursor-pointer ${
+                    ledgerViewMode === "detailed" ? "bg-white text-purple-700 shadow-sm" : "text-gray-500 hover:text-gray-900"
+                  }`}
                 >
-                  View
+                  M1–P4 Spreadsheet
                 </button>
-              </td>
-            </>
+                <button
+                  type="button"
+                  onClick={() => setLedgerViewMode("organisation")}
+                  className={`px-2.5 py-1.5 rounded-md transition-colors cursor-pointer ${
+                    ledgerViewMode === "organisation" ? "bg-white text-purple-700 shadow-sm" : "text-gray-500 hover:text-gray-900"
+                  }`}
+                >
+                  Organisation Ledger
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                type="button"
+                onClick={handleDownloadCsv}
+                className="btn-primary text-xs font-semibold px-4 py-2 rounded-lg shadow-sm flex items-center gap-1.5 cursor-pointer"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                <span>Download CSV</span>
+              </button>
+              <button
+                type="button"
+                onClick={fetchLedgerRecords}
+                className="text-xs bg-purple-50 hover:bg-purple-100 text-purple-700 font-semibold px-3 py-2 rounded-lg border border-purple-200 transition-colors cursor-pointer"
+              >
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          {ledgerViewMode === "detailed" ? (
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+                <div>
+                  <h2 className="text-sm font-bold text-gray-900">Assessment Responses (M1–P4)</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Spreadsheet view with separate columns for Mood (M1–M4), Stress (S1–S4), Recovery (R1–R4), and Physical (P1–P4) responses.
+                  </p>
+                </div>
+                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
+                  {ledgerRecords.length} record{ledgerRecords.length === 1 ? "" : "s"}
+                </span>
+              </div>
+
+              {ledgerLoading ? (
+                <div className="p-12 text-center text-gray-500 flex items-center justify-center gap-2">
+                  <svg className="w-5 h-5 animate-spin text-purple-core" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                  <span className="text-sm font-medium">Loading assessment ledger...</span>
+                </div>
+              ) : ledgerError ? (
+                <div className="p-8 text-center text-red-600 text-xs">
+                  <p>{ledgerError}</p>
+                  <button onClick={fetchLedgerRecords} className="mt-2 text-purple-700 font-semibold underline">Retry</button>
+                </div>
+              ) : ledgerRecords.length === 0 ? (
+                <div className="p-12 text-center text-gray-500">
+                  <p className="text-sm font-medium">No assessment ledger records found.</p>
+                  <p className="text-xs text-gray-400 mt-1">Completed baseline and weekly MSI assessments will appear here.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[1600px] border-collapse text-left text-xs">
+                    <thead>
+                      {/* Tier 1: Grouped Headers */}
+                      <tr className="border-b border-gray-200 font-bold uppercase text-[10px] tracking-wider">
+                        <th colSpan={6} className="bg-purple-50 text-purple-900 px-4 py-2 border-r border-purple-200 text-center">
+                          Profile
+                        </th>
+                        <th colSpan={4} className="bg-indigo-50 text-indigo-900 px-3 py-2 border-r border-indigo-200 text-center">
+                          Mood
+                        </th>
+                        <th colSpan={4} className="bg-amber-50 text-amber-900 px-3 py-2 border-r border-amber-200 text-center">
+                          Stress
+                        </th>
+                        <th colSpan={4} className="bg-blue-50 text-blue-900 px-3 py-2 border-r border-blue-200 text-center">
+                          Recovery
+                        </th>
+                        <th colSpan={4} className="bg-emerald-50 text-emerald-900 px-3 py-2 border-r border-emerald-200 text-center">
+                          Physical
+                        </th>
+                        <th colSpan={1} className="bg-purple-100 text-purple-950 px-3 py-2 border-r border-purple-200 text-center">
+                          Result
+                        </th>
+                        <th colSpan={2} className="bg-gray-100 text-gray-800 px-4 py-2 text-center">
+                          Metadata
+                        </th>
+                      </tr>
+                      {/* Tier 2: Column Headers */}
+                      <tr className="bg-gray-50 border-b border-gray-200 font-semibold text-gray-600 text-[11px]">
+                        {/* Profile columns */}
+                        <th className="py-2.5 px-4 min-w-[150px] sticky left-0 bg-gray-50 z-10 border-r border-gray-200 shadow-sm">Name</th>
+                        <th className="py-2.5 px-2.5 min-w-[50px] text-center">Age</th>
+                        <th className="py-2.5 px-2.5 min-w-[70px]">Gender</th>
+                        <th className="py-2.5 px-3 min-w-[130px]">Profession</th>
+                        <th className="py-2.5 px-2.5 min-w-[75px] text-center">Sleep</th>
+                        <th className="py-2.5 px-3 min-w-[120px] border-r border-gray-200">Medical History</th>
+
+                        {/* Mood */}
+                        <th className="py-2.5 px-2 text-center min-w-[42px] bg-indigo-50/30">M1</th>
+                        <th className="py-2.5 px-2 text-center min-w-[42px] bg-indigo-50/30">M2</th>
+                        <th className="py-2.5 px-2 text-center min-w-[42px] bg-indigo-50/30">M3</th>
+                        <th className="py-2.5 px-2 text-center min-w-[42px] bg-indigo-50/30 border-r border-gray-200">M4</th>
+
+                        {/* Stress */}
+                        <th className="py-2.5 px-2 text-center min-w-[42px] bg-amber-50/30">S1</th>
+                        <th className="py-2.5 px-2 text-center min-w-[42px] bg-amber-50/30">S2</th>
+                        <th className="py-2.5 px-2 text-center min-w-[42px] bg-amber-50/30">S3</th>
+                        <th className="py-2.5 px-2 text-center min-w-[42px] bg-amber-50/30 border-r border-gray-200">S4</th>
+
+                        {/* Recovery */}
+                        <th className="py-2.5 px-2 text-center min-w-[42px] bg-blue-50/30">R1</th>
+                        <th className="py-2.5 px-2 text-center min-w-[42px] bg-blue-50/30">R2</th>
+                        <th className="py-2.5 px-2 text-center min-w-[42px] bg-blue-50/30">R3</th>
+                        <th className="py-2.5 px-2 text-center min-w-[42px] bg-blue-50/30 border-r border-gray-200">R4</th>
+
+                        {/* Physical */}
+                        <th className="py-2.5 px-2 text-center min-w-[42px] bg-emerald-50/30">P1</th>
+                        <th className="py-2.5 px-2 text-center min-w-[42px] bg-emerald-50/30">P2</th>
+                        <th className="py-2.5 px-2 text-center min-w-[42px] bg-emerald-50/30">P3</th>
+                        <th className="py-2.5 px-2 text-center min-w-[42px] bg-emerald-50/30 border-r border-gray-200">P4</th>
+
+                        {/* Result */}
+                        <th className="py-2.5 px-3 text-center min-w-[95px] bg-purple-50 font-bold text-purple-900 border-r border-gray-200">
+                          Calculated MSI
+                        </th>
+
+                        {/* Metadata */}
+                        <th className="py-2.5 px-3 min-w-[95px]">Type</th>
+                        <th className="py-2.5 px-3 min-w-[105px]">Date</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {ledgerRecords.map((r: any) => (
+                        <tr key={r._id || r.id} className="hover:bg-purple-50/20 transition-colors">
+                          {/* Profile */}
+                          <td className="py-3 px-4 sticky left-0 bg-white z-10 border-r border-gray-200 font-semibold text-gray-900 truncate max-w-[180px]">
+                            {r.name || "—"}
+                          </td>
+                          <td className="py-3 px-2.5 text-center text-gray-700 font-mono">{r.age != null ? r.age : "—"}</td>
+                          <td className="py-3 px-2.5 text-gray-600">{r.gender || "—"}</td>
+                          <td className="py-3 px-3 text-gray-700 truncate max-w-[140px]" title={r.profession || ""}>
+                            {r.profession || "—"}
+                          </td>
+                          <td className="py-3 px-2.5 text-center text-gray-700 font-mono">
+                            {r.hoursOfSleep != null ? `${r.hoursOfSleep}h` : "—"}
+                          </td>
+                          <td className="py-3 px-3 border-r border-gray-200 text-gray-600 truncate max-w-[130px]" title={r.medicalHistory || "None"}>
+                            {r.medicalHistory || "None"}
+                          </td>
+
+                          {/* Mood */}
+                          <td className="py-3 px-2 text-center font-mono text-gray-800 bg-indigo-50/10">{r.M1 != null ? r.M1 : <span className="text-gray-300">—</span>}</td>
+                          <td className="py-3 px-2 text-center font-mono text-gray-800 bg-indigo-50/10">{r.M2 != null ? r.M2 : <span className="text-gray-300">—</span>}</td>
+                          <td className="py-3 px-2 text-center font-mono text-gray-800 bg-indigo-50/10">{r.M3 != null ? r.M3 : <span className="text-gray-300">—</span>}</td>
+                          <td className="py-3 px-2 text-center font-mono text-gray-800 bg-indigo-50/10 border-r border-gray-200">{r.M4 != null ? r.M4 : <span className="text-gray-300">—</span>}</td>
+
+                          {/* Stress */}
+                          <td className="py-3 px-2 text-center font-mono text-gray-800 bg-amber-50/10">{r.S1 != null ? r.S1 : <span className="text-gray-300">—</span>}</td>
+                          <td className="py-3 px-2 text-center font-mono text-gray-800 bg-amber-50/10">{r.S2 != null ? r.S2 : <span className="text-gray-300">—</span>}</td>
+                          <td className="py-3 px-2 text-center font-mono text-gray-800 bg-amber-50/10">{r.S3 != null ? r.S3 : <span className="text-gray-300">—</span>}</td>
+                          <td className="py-3 px-2 text-center font-mono text-gray-800 bg-amber-50/10 border-r border-gray-200">{r.S4 != null ? r.S4 : <span className="text-gray-300">—</span>}</td>
+
+                          {/* Recovery */}
+                          <td className="py-3 px-2 text-center font-mono text-gray-800 bg-blue-50/10">{r.R1 != null ? r.R1 : <span className="text-gray-300">—</span>}</td>
+                          <td className="py-3 px-2 text-center font-mono text-gray-800 bg-blue-50/10">{r.R2 != null ? r.R2 : <span className="text-gray-300">—</span>}</td>
+                          <td className="py-3 px-2 text-center font-mono text-gray-800 bg-blue-50/10">{r.R3 != null ? r.R3 : <span className="text-gray-300">—</span>}</td>
+                          <td className="py-3 px-2 text-center font-mono text-gray-800 bg-blue-50/10 border-r border-gray-200">{r.R4 != null ? r.R4 : <span className="text-gray-300">—</span>}</td>
+
+                          {/* Physical */}
+                          <td className="py-3 px-2 text-center font-mono text-gray-800 bg-emerald-50/10">{r.P1 != null ? r.P1 : <span className="text-gray-300">—</span>}</td>
+                          <td className="py-3 px-2 text-center font-mono text-gray-800 bg-emerald-50/10">{r.P2 != null ? r.P2 : <span className="text-gray-300">—</span>}</td>
+                          <td className="py-3 px-2 text-center font-mono text-gray-800 bg-emerald-50/10">{r.P3 != null ? r.P3 : <span className="text-gray-300">—</span>}</td>
+                          <td className="py-3 px-2 text-center font-mono text-gray-800 bg-emerald-50/10 border-r border-gray-200">{r.P4 != null ? r.P4 : <span className="text-gray-300">—</span>}</td>
+
+                          {/* Result */}
+                          <td className="py-3 px-3 text-center border-r border-gray-200 bg-purple-50/30">
+                            <span className="font-mono font-bold text-xs px-2.5 py-1 rounded-full bg-purple-100 text-purple-800">
+                              {r.calculatedMSI}
+                            </span>
+                          </td>
+
+                          {/* Metadata */}
+                          <td className="py-3 px-3">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                              r.assessmentType?.toLowerCase() === "baseline"
+                                ? "bg-purple-50 text-purple-700 border-purple-200"
+                                : "bg-blue-50 text-blue-700 border-blue-200"
+                            }`}>
+                              {r.assessmentType ? r.assessmentType.charAt(0).toUpperCase() + r.assessmentType.slice(1).toLowerCase() : "Baseline"}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-gray-500 font-mono text-[11px] whitespace-nowrap">
+                            {r.assessmentDate ? new Date(r.assessmentDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          ) : (
+            <TablePage
+              title="Assessments"
+              desc="Global ledger of completed assessments across all organisations."
+              columns={["Employee", "Organisation", "Type", "Score", "Date", "Status", ""]}
+              data={filteredAssessments}
+              searchValue={search}
+              onSearchChange={setSearch}
+              loading={loading}
+              emptyMessage={
+                error ? (
+                  <div className="space-y-2">
+                    <p className="text-red-600 font-medium text-xs">{error}</p>
+                    <button
+                      onClick={fetchAssessments}
+                      className="text-xs text-purple-700 hover:text-purple-800 font-semibold underline"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                ) : (
+                  "No assessments found."
+                )
+              }
+              renderRow={(a: any) => (
+                <>
+                  <td className="px-6 py-4">
+                    <p className="font-semibold text-gray-900">{a.employeeName}</p>
+                    <p className="font-mono text-xs text-gray-400 mt-0.5">{a.employeeId}</p>
+                  </td>
+                  <td className="px-6 py-4 text-gray-700">
+                    <p className="font-medium text-gray-900">{a.organisationName}</p>
+                    {a.organisationCode && (
+                      <p className="font-mono text-[11px] text-gray-400">{a.organisationCode}</p>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 text-gray-900 font-medium">{a.type}</td>
+                  <td className="px-6 py-4 font-mono font-bold text-gray-800">
+                    {a.scoreDisplay ?? (a.score !== null ? a.score : "N/A")}
+                  </td>
+                  <td className="px-6 py-4 text-gray-500 text-xs">
+                    {a.date ? new Date(a.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                  </td>
+                  <td className="px-6 py-4">
+                    <StatusBadge status={a.status} />
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedAssessmentId(a.id)}
+                      className="text-purple-600 hover:text-purple-800 font-medium text-xs bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-md transition-colors cursor-pointer"
+                    >
+                      View
+                    </button>
+                  </td>
+                </>
+              )}
+            />
           )}
-        />
+        </div>
       ) : (
         /* Archetype Validation / User Resonance R&D Analytics */
         <div className="space-y-6">
@@ -4259,9 +4613,9 @@ function AssessmentsScreen() {
 
           {/* Overview Summary Cards */}
           {archetypeSummary && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Total Validations</p>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Total Responses</p>
                 <p className="text-3xl font-bold text-gray-900 mt-2 font-mono">{archetypeSummary.totalResponses}</p>
                 <p className="text-[11px] text-gray-400 mt-1">Across all 7 stress archetypes</p>
               </div>
@@ -4280,11 +4634,18 @@ function AssessmentsScreen() {
                 <p className="text-[11px] text-gray-400 mt-1">Strongly resonant user rate</p>
               </div>
               <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Moderate Fit (Score 3)</p>
+                <p className="text-3xl font-bold text-blue-600 mt-2 font-mono">
+                  {archetypeSummary.overallModerateFitPct ?? 0}%
+                </p>
+                <p className="text-[11px] text-gray-400 mt-1">Partial resonance rate</p>
+              </div>
+              <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Low Fit (Score 1–2)</p>
                 <p className="text-3xl font-bold text-amber-600 mt-2 font-mono">
                   {archetypeSummary.overallLowFitPct}%
                 </p>
-                <p className="text-[11px] text-gray-400 mt-1">Candidates for refinement review</p>
+                <p className="text-[11px] text-gray-400 mt-1">Refinement review candidates</p>
               </div>
             </div>
           )}
@@ -4307,6 +4668,11 @@ function AssessmentsScreen() {
               >
                 Try Again
               </button>
+            </div>
+          ) : archetypeAnalytics.length === 0 ? (
+            <div className="bg-white border border-gray-200 rounded-xl p-12 text-center text-gray-500 shadow-sm">
+              <p className="text-sm font-semibold text-gray-700">No validation responses yet.</p>
+              <p className="text-xs text-gray-400 mt-1">User responses will appear here as validations are submitted.</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

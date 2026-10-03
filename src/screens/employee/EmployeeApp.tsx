@@ -451,12 +451,18 @@ function HomeScreen({ onNav }: { onNav: (s: Screen) => void }) {
           setAssessmentMetrics(metricsData.data)
           if (metricsData.data.baselineMsi != null) {
             localStorage.setItem("cq_baseline_msi", String(metricsData.data.baselineMsi))
+          } else {
+            localStorage.removeItem("cq_baseline_msi")
           }
           if (metricsData.data.lastBaselineMsiDate) {
             localStorage.setItem("cq_last_baseline_date", metricsData.data.lastBaselineMsiDate)
+          } else {
+            localStorage.removeItem("cq_last_baseline_date")
           }
           if (metricsData.data.nextBaselineMsiDate) {
             localStorage.setItem("cq_next_baseline_date", metricsData.data.nextBaselineMsiDate)
+          } else {
+            localStorage.removeItem("cq_next_baseline_date")
           }
         }
         if (rootCauseData.success && rootCauseData.data) {
@@ -500,51 +506,64 @@ function HomeScreen({ onNav }: { onNav: (s: Screen) => void }) {
   const empName = employeeProfile?.name || localStorage.getItem("cq_user_name") || "Employee"
   const firstName = empName.split(" ")[0]
 
-  // Source of truth: Unified MSI Array
+  // Source of truth: Unified MSI Array from authoritative backend metrics
   const msiArray: Array<{ score: number; type: "baseline" | "weekly"; recordedAt: string }> =
-    Array.isArray(assessmentMetrics?.msi) && assessmentMetrics.msi.length > 0
+    Array.isArray(assessmentMetrics?.msi)
       ? assessmentMetrics.msi
       : []
 
   const latestMsiItem = msiArray.length > 0 ? msiArray[msiArray.length - 1] : null
-  const baselineItem = msiArray.find((item) => item.type === "baseline")
+  const baselineItem = msiArray.find((item) => item.type === "baseline" && typeof item.score === "number")
 
+  // The baseline is completed ONLY when a valid baseline MSI record exists in backend data
   const baselineMsi = baselineItem
     ? baselineItem.score
-    : assessmentMetrics?.baselineMsi ?? (localStorage.getItem("cq_baseline_msi") ? parseInt(localStorage.getItem("cq_baseline_msi")!, 10) : null)
-  const hasBaseline = baselineMsi != null
+    : (typeof assessmentMetrics?.baselineMsi === "number" ? assessmentMetrics.baselineMsi : null)
 
-  const currentMsi = latestMsiItem
-    ? latestMsiItem.score
-    : (assessmentMetrics?.currentMsi ?? baselineMsi)
+  const hasBaseline =
+    baselineMsi != null &&
+    (msiArray.some((item) => item.type === "baseline" && typeof item.score === "number") ||
+      assessmentMetrics?.hasBaseline === true ||
+      typeof assessmentMetrics?.baselineMsi === "number")
 
-  const msiForDisplay = currentMsi ?? baselineMsi ?? 50
-  const band = getBand(msiForDisplay)
-  const baselineBand = baselineMsi != null ? getBand(baselineMsi) : band
+  // Latest MSI is the last valid score in the MSI array or baseline if no weekly checkin yet
+  const currentMsi =
+    latestMsiItem && typeof latestMsiItem.score === "number"
+      ? latestMsiItem.score
+      : typeof assessmentMetrics?.currentMsi === "number"
+      ? assessmentMetrics.currentMsi
+      : hasBaseline
+      ? baselineMsi
+      : null
+
+  // If no baseline completed, there is NO MSI score to display
+  const msiForDisplay = currentMsi ?? baselineMsi ?? null
+  const band = msiForDisplay != null ? getBand(msiForDisplay) : null
+  const baselineBand = baselineMsi != null ? getBand(baselineMsi) : null
 
   // Stress category styling and caring human assurance messaging for circular MSI card
-  const displayScore = currentMsi ?? baselineMsi ?? 0
-  const activeStressCat = getMsiStressCategory(displayScore)
+  const displayScore = currentMsi ?? baselineMsi ?? null
+  const activeStressCat = displayScore != null ? getMsiStressCategory(displayScore) : null
 
-  const headline = currentMsi != null ? (MSI_HEADLINE[band.label] ?? "Your stress is running smoothly.") : "Baseline established. Check in to track daily shifts."
-  const subtext = currentMsi != null ? (MSI_SUBTEXT[band.label] ?? "Even a few quiet minutes today can help.") : "Take your daily check-in to monitor changes from your baseline."
-  const gaugeColor = currentMsi != null ? (GAUGE_COLOR[band.label] ?? "#4ade80") : "#a78bfa"
-  const baselineGaugeColor = baselineMsi != null ? (GAUGE_COLOR[baselineBand.label] ?? "#4ade80") : "#a78bfa"
-  const primaryRec = getPrimaryRec(msiForDisplay)
+  const headline = currentMsi != null && band ? (MSI_HEADLINE[band.label] ?? "Your stress is running smoothly.") : "Baseline established. Check in to track daily shifts."
+  const subtext = currentMsi != null && band ? (MSI_SUBTEXT[band.label] ?? "Even a few quiet minutes today can help.") : "Take your daily check-in to monitor changes from your baseline."
+  const gaugeColor = currentMsi != null && band ? (GAUGE_COLOR[band.label] ?? "#4ade80") : "#a78bfa"
+  const baselineGaugeColor = baselineMsi != null && baselineBand ? (GAUGE_COLOR[baselineBand.label] ?? "#4ade80") : "#a78bfa"
+  const primaryRec = msiForDisplay != null ? getPrimaryRec(msiForDisplay) : null
 
   const assessments = JSON.parse(localStorage.getItem("cq_stress_assessments") ?? "[]")
   const recentAssessment = assessments.length > 0 ? assessments[assessments.length - 1] : null
   const driver = recentAssessment?.selectedDriver
-  const advice = getAdvice(msiForDisplay, driver)
+  const advice = msiForDisplay != null ? getAdvice(msiForDisplay, driver) : []
 
-  // Baseline MSI Weekly Update Logic
-  const lastBaselineDateRaw = assessmentMetrics?.lastBaselineMsiDate || assessmentMetrics?.baselineCompletedAt || localStorage.getItem("cq_last_baseline_date") || null
+  // Baseline MSI Weekly Update Logic: only applicable when baseline has been completed
+  const lastBaselineDateRaw = assessmentMetrics?.lastBaselineMsiDate || assessmentMetrics?.baselineCompletedAt || (baselineItem ? baselineItem.recordedAt : null)
   const lastBaselineDateObj = lastBaselineDateRaw ? new Date(lastBaselineDateRaw) : null
   const lastBaselineDateFormatted = lastBaselineDateObj && !isNaN(lastBaselineDateObj.getTime())
     ? lastBaselineDateObj.toLocaleDateString("en-US", { day: "numeric", month: "long", year: "numeric" })
     : null
 
-  let isBaselineEligible = !hasBaseline
+  let isBaselineEligible = false
   let baselineRemainingDays = 0
   let nextBaselineDateFormatted = null
 
@@ -634,7 +653,7 @@ function HomeScreen({ onNav }: { onNav: (s: Screen) => void }) {
                     <span className="w-1.5 h-1.5 rounded-full bg-purple-core animate-pulse" />
                     <span className="text-[10px] font-semibold text-lavender-bright uppercase tracking-wider">Initial Calibration</span>
                   </div>
-                  <h3 className="text-base font-semibold text-warm-white">Complete Baseline MSI</h3>
+                  <h3 className="text-base font-semibold text-warm-white">Let's calculate your baseline MSI</h3>
                   <p className="text-xs text-text-muted mt-0.5 leading-relaxed">
                     Establish your personal stress baseline to unlock tailored tracking.
                   </p>
@@ -645,7 +664,7 @@ function HomeScreen({ onNav }: { onNav: (s: Screen) => void }) {
                 onClick={() => onNav("baseline-msi")}
                 className="w-full btn-primary py-3.5 rounded-2xl text-sm font-semibold cursor-pointer shadow-lg shadow-purple-900/20"
               >
-                Complete Baseline MSI →
+                Let's calculate your baseline MSI →
               </button>
             </div>
           </SoftCard>
@@ -6134,12 +6153,19 @@ export default function EmployeeApp({ initialScreen = "home" }: { initialScreen?
       })
         .then((r) => r.json())
         .then((data) => {
-          if (data.success && data.data?.currentMsi != null) {
-            setAppCurrentMsi(data.data.currentMsi)
-            localStorage.setItem("cq_current_msi", String(data.data.currentMsi))
-          }
-          if (data.success && data.data?.baselineMsi != null) {
-            localStorage.setItem("cq_baseline_msi", String(data.data.baselineMsi))
+          if (data.success) {
+            if (data.data?.currentMsi != null) {
+              setAppCurrentMsi(data.data.currentMsi)
+              localStorage.setItem("cq_current_msi", String(data.data.currentMsi))
+            } else {
+              setAppCurrentMsi(null)
+              localStorage.removeItem("cq_current_msi")
+            }
+            if (data.data?.baselineMsi != null) {
+              localStorage.setItem("cq_baseline_msi", String(data.data.baselineMsi))
+            } else {
+              localStorage.removeItem("cq_baseline_msi")
+            }
           }
         })
         .catch(() => {})

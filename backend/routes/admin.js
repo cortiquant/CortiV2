@@ -9,6 +9,7 @@ const Listener = require("../models/Listener")
 const ListenerInvitation = require("../models/ListenerInvitation")
 const CorporateOnboarding = require("../models/CorporateOnboarding")
 const Assessment = require("../models/Assessment")
+const AssessmentLedger = require("../models/AssessmentLedger")
 const ActivityLog = require("../models/ActivityLog")
 const { sendHRInvitation, sendListenerInvitation, sendTestEmail, verifySMTP } = require("../services/emailService")
 const { logActivity } = require("../services/activityService")
@@ -1261,6 +1262,196 @@ router.get("/employees/:employeeId", requireAdmin, async (req, res) => {
   } catch (err) {
     console.error("[ADMIN] Error fetching employee details:", err.message)
     res.status(500).json({ success: false, message: "Unable to fetch employee details." })
+  }
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/admin/assessment-ledger
+// Founder/Admin-protected — returns dedicated flat assessment ledger records.
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/assessment-ledger", requireAdmin, async (req, res) => {
+  try {
+    const { search, type, startDate, endDate, sortBy = "assessmentDate", sortOrder = "desc" } = req.query
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1)
+    const limit = Math.max(1, Math.min(1000, parseInt(req.query.limit, 10) || 100))
+
+    const filter = {}
+
+    // Type filter: baseline or weekly
+    if (type && type !== "all" && type !== "All") {
+      filter.assessmentType = new RegExp(`^${type.trim()}$`, "i")
+    }
+
+    // Date range filter
+    if (startDate || endDate) {
+      filter.assessmentDate = {}
+      if (startDate) {
+        filter.assessmentDate.$gte = new Date(startDate)
+      }
+      if (endDate) {
+        const end = new Date(endDate)
+        end.setHours(23, 59, 59, 999)
+        filter.assessmentDate.$lte = end
+      }
+    }
+
+    // Search filter: name, profession, or gender
+    if (search && typeof search === "string" && search.trim()) {
+      const q = search.trim()
+      const searchRegex = new RegExp(q, "i")
+      filter.$or = [
+        { name: searchRegex },
+        { profession: searchRegex },
+        { gender: searchRegex },
+      ]
+    }
+
+    const sort = {}
+    sort[sortBy] = sortOrder === "asc" ? 1 : -1
+
+    const total = await AssessmentLedger.countDocuments(filter)
+    const records = await AssessmentLedger.find(filter)
+      .sort(sort)
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean()
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        records,
+        total,
+        page,
+        totalPages: Math.ceil(total / limit),
+      },
+    })
+  } catch (err) {
+    console.error("[ADMIN] GET /assessment-ledger error:", err.message)
+    return res.status(500).json({ success: false, message: "Server error fetching assessment ledger." })
+  }
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/admin/assessment-ledger/export
+// Founder/Admin-protected — exports filtered assessment ledger records to CSV.
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/assessment-ledger/export", requireAdmin, async (req, res) => {
+  try {
+    const { search, type, startDate, endDate, sortBy = "assessmentDate", sortOrder = "desc" } = req.query
+
+    const filter = {}
+    if (type && type !== "all" && type !== "All") {
+      filter.assessmentType = new RegExp(`^${type.trim()}$`, "i")
+    }
+
+    if (startDate || endDate) {
+      filter.assessmentDate = {}
+      if (startDate) {
+        filter.assessmentDate.$gte = new Date(startDate)
+      }
+      if (endDate) {
+        const end = new Date(endDate)
+        end.setHours(23, 59, 59, 999)
+        filter.assessmentDate.$lte = end
+      }
+    }
+
+    if (search && typeof search === "string" && search.trim()) {
+      const q = search.trim()
+      const searchRegex = new RegExp(q, "i")
+      filter.$or = [
+        { name: searchRegex },
+        { profession: searchRegex },
+        { gender: searchRegex },
+      ]
+    }
+
+    const sort = {}
+    sort[sortBy] = sortOrder === "asc" ? 1 : -1
+
+    const records = await AssessmentLedger.find(filter).sort(sort).lean()
+
+    const headers = [
+      "Name",
+      "Age",
+      "Gender",
+      "Profession",
+      "Hours of Sleep",
+      "Medical History",
+      "M1",
+      "M2",
+      "M3",
+      "M4",
+      "S1",
+      "S2",
+      "S3",
+      "S4",
+      "R1",
+      "R2",
+      "R3",
+      "R4",
+      "P1",
+      "P2",
+      "P3",
+      "P4",
+      "Calculated MSI",
+      "Assessment Type",
+      "Assessment Date",
+    ]
+
+    function escapeCsv(val) {
+      if (val === null || val === undefined) return ""
+      const str = String(val)
+      if (str.includes(",") || str.includes('"') || str.includes("\n") || str.includes("\r")) {
+        return `"${str.replace(/"/g, '""')}"`
+      }
+      return str
+    }
+
+    const csvRows = [headers.join(",")]
+
+    for (const r of records) {
+      const dateStr = r.assessmentDate ? new Date(r.assessmentDate).toISOString().split("T")[0] : ""
+      const typeDisplay = r.assessmentType ? r.assessmentType.charAt(0).toUpperCase() + r.assessmentType.slice(1).toLowerCase() : ""
+      const row = [
+        escapeCsv(r.name),
+        escapeCsv(r.age ?? ""),
+        escapeCsv(r.gender ?? ""),
+        escapeCsv(r.profession ?? ""),
+        escapeCsv(r.hoursOfSleep ?? ""),
+        escapeCsv(r.medicalHistory ?? ""),
+        escapeCsv(r.M1 ?? ""),
+        escapeCsv(r.M2 ?? ""),
+        escapeCsv(r.M3 ?? ""),
+        escapeCsv(r.M4 ?? ""),
+        escapeCsv(r.S1 ?? ""),
+        escapeCsv(r.S2 ?? ""),
+        escapeCsv(r.S3 ?? ""),
+        escapeCsv(r.S4 ?? ""),
+        escapeCsv(r.R1 ?? ""),
+        escapeCsv(r.R2 ?? ""),
+        escapeCsv(r.R3 ?? ""),
+        escapeCsv(r.R4 ?? ""),
+        escapeCsv(r.P1 ?? ""),
+        escapeCsv(r.P2 ?? ""),
+        escapeCsv(r.P3 ?? ""),
+        escapeCsv(r.P4 ?? ""),
+        escapeCsv(r.calculatedMSI ?? ""),
+        escapeCsv(typeDisplay),
+        escapeCsv(dateStr),
+      ]
+      csvRows.push(row.join(","))
+    }
+
+    const csvContent = csvRows.join("\r\n")
+    const filename = `assessment-ledger-${new Date().toISOString().split("T")[0]}.csv`
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8")
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`)
+    return res.status(200).send(csvContent)
+  } catch (err) {
+    console.error("[ADMIN] GET /assessment-ledger/export error:", err.message)
+    return res.status(500).json({ success: false, message: "Server error exporting assessment ledger." })
   }
 })
 

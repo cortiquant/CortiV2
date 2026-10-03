@@ -148,7 +148,7 @@ async function requireAdmin(req, res, next) {
   requireAuth(req, res, (err) => {
     if (err) return next(err)
     const role = (req.user?.role || "").toLowerCase()
-    if (role !== "admin") {
+    if (role !== "admin" && role !== "founder") {
       return res.status(403).json({ success: false, message: "You are not authorized to perform this action." })
     }
     next()

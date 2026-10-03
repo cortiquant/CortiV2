@@ -1,6 +1,7 @@
 const express = require("express")
 const router = express.Router()
 const Assessment = require("../models/Assessment")
+const AssessmentLedger = require("../models/AssessmentLedger")
 const User = require("../models/User")
 const { requireActiveEmployee } = require("../middleware/auth")
 const { logActivity } = require("../services/activityService")
@@ -88,7 +89,7 @@ function calculateDailyCheckInMSI({ feeling, stressor, physical, moodCheck, stre
 router.post("/checkin", requireActiveEmployee, async (req, res) => {
   try {
     const user = req.user
-    const { feeling, stressor, physical, driver, moodCheck, stressPulse, physicalCheck } = req.body
+    const { feeling, stressor, physical, driver, moodCheck, stressPulse, physicalCheck, answers } = req.body
 
     const { msi, scores } = calculateDailyCheckInMSI({
       feeling,
@@ -127,6 +128,51 @@ router.post("/checkin", requireActiveEmployee, async (req, res) => {
     })
 
     await assessmentDoc.save()
+
+    // ── Create standalone AssessmentLedger record with flat fields ─────────
+    try {
+      const M1 = moodCheck?.M1 ?? (Array.isArray(answers) ? answers[0] : null)
+      const M2 = moodCheck?.M2 ?? (Array.isArray(answers) ? answers[1] : null)
+      const M3 = moodCheck?.M3 ?? (Array.isArray(answers) ? answers[2] : null)
+      const M4 = moodCheck?.M4 ?? (Array.isArray(answers) ? answers[3] : null)
+
+      const S1 = stressPulse?.S1 ?? stressPulse?.SP1 ?? (Array.isArray(answers) ? answers[4] : null)
+      const S2 = stressPulse?.S2 ?? stressPulse?.SP2 ?? (Array.isArray(answers) ? answers[5] : null)
+      const S3 = stressPulse?.S3 ?? stressPulse?.SP3 ?? (Array.isArray(answers) ? answers[6] : null)
+      const S4 = stressPulse?.S4 ?? stressPulse?.SP4 ?? (Array.isArray(answers) ? answers[7] : null)
+
+      const R1 = stressPulse?.R1 ?? stressPulse?.SP5 ?? (Array.isArray(answers) ? answers[8] : null)
+      const R2 = stressPulse?.R2 ?? stressPulse?.SP6 ?? (Array.isArray(answers) ? answers[9] : null)
+      const R3 = stressPulse?.R3 ?? (Array.isArray(answers) ? answers[10] : null)
+      const R4 = stressPulse?.R4 ?? (Array.isArray(answers) ? answers[11] : null)
+
+      const P1 = physicalCheck?.P1 ?? physicalCheck?.PH1 ?? (Array.isArray(answers) ? answers[12] : null)
+      const P2 = physicalCheck?.P2 ?? physicalCheck?.PH2 ?? (Array.isArray(answers) ? answers[13] : null)
+      const P3 = physicalCheck?.P3 ?? physicalCheck?.PH3 ?? (Array.isArray(answers) ? answers[14] : null)
+      const P4 = physicalCheck?.P4 ?? physicalCheck?.PH4 ?? (Array.isArray(answers) ? answers[15] : null)
+
+      const ledgerDoc = new AssessmentLedger({
+        userId: user._id,
+        name: user.name || "",
+        age: user.age != null ? Number(user.age) : null,
+        gender: user.gender || "",
+        profession: user.occupation || user.profession || user.designation || "",
+        hoursOfSleep: user.sleepHours != null ? Number(user.sleepHours) : null,
+        medicalHistory: user.illnessHistory || user.medicalHistory || "",
+
+        M1, M2, M3, M4,
+        S1, S2, S3, S4,
+        R1, R2, R3, R4,
+        P1, P2, P3, P4,
+
+        calculatedMSI: msi,
+        assessmentType: "weekly",
+        assessmentDate: assessmentDoc.completedAt || new Date(),
+      })
+      await ledgerDoc.save()
+    } catch (ledgerErr) {
+      console.error("[ASSESSMENT LEDGER] Error saving checkin ledger record:", ledgerErr.message)
+    }
 
     // ── Append to User's unified MSI array (Single source of truth) ─────────
     const newMsiEntry = {
@@ -186,17 +232,21 @@ router.get("/baseline/eligibility", requireActiveEmployee, async (req, res) => {
       return res.status(404).json({ success: false, message: "User not found." })
     }
 
-    const lastDate = user.lastBaselineMsiDate || user.baselineCompletedAt || null
-    const hasBaseline = user.baselineMsi != null && lastDate != null
+    const msiArray = Array.isArray(user.msi) ? user.msi : []
+    const baselineItem = msiArray.find((item) => item.type === "baseline" && typeof item.score === "number")
+    const resolvedBaselineMsi = baselineItem ? baselineItem.score : (user.baselineMsi ?? null)
+    const lastDate = user.lastBaselineMsiDate || user.baselineCompletedAt || (baselineItem ? baselineItem.recordedAt : null)
+    const hasBaseline = resolvedBaselineMsi != null
 
     if (!hasBaseline) {
       return res.status(200).json({
         success: true,
         data: {
+          hasBaseline: false,
           eligible: true,
           status: "initial",
           buttonLabel: "Complete Baseline MSI",
-          currentMsi: user.baselineMsi ?? null,
+          currentMsi: null,
           lastBaselineMsiDate: null,
           nextBaselineMsiDate: null,
           remainingDays: 0,
@@ -368,6 +418,59 @@ router.post("/baseline", requireActiveEmployee, async (req, res) => {
     })
     await assessmentDoc.save()
 
+    // Unified MSI Array logic:
+    // If the user does not yet have a baseline entry in msi[], mark this first one as 'baseline'.
+    // Every subsequent weekly assessment is appended as 'weekly'.
+    const existingMsiArray = Array.isArray(user.msi) ? user.msi : []
+    const hasBaselineInArray = existingMsiArray.some((item) => item.type === "baseline")
+    const msiEntryType = !hasBaselineInArray ? "baseline" : "weekly"
+
+    // 2b. Create standalone AssessmentLedger record with flat fields
+    try {
+      const M1 = Array.isArray(answers) ? answers[0] : (moodCheck?.M1 ?? null)
+      const M2 = Array.isArray(answers) ? answers[1] : (moodCheck?.M2 ?? null)
+      const M3 = Array.isArray(answers) ? answers[2] : (moodCheck?.M3 ?? null)
+      const M4 = Array.isArray(answers) ? answers[3] : (moodCheck?.M4 ?? null)
+
+      const S1 = Array.isArray(answers) ? answers[4] : (stressPulse?.S1 ?? stressPulse?.SP1 ?? null)
+      const S2 = Array.isArray(answers) ? answers[5] : (stressPulse?.S2 ?? stressPulse?.SP2 ?? null)
+      const S3 = Array.isArray(answers) ? answers[6] : (stressPulse?.S3 ?? stressPulse?.SP3 ?? null)
+      const S4 = Array.isArray(answers) ? answers[7] : (stressPulse?.S4 ?? stressPulse?.SP4 ?? null)
+
+      const R1 = Array.isArray(answers) ? answers[8] : (stressPulse?.R1 ?? stressPulse?.SP5 ?? null)
+      const R2 = Array.isArray(answers) ? answers[9] : (stressPulse?.R2 ?? stressPulse?.SP6 ?? null)
+      const R3 = Array.isArray(answers) ? answers[10] : (stressPulse?.R3 ?? null)
+      const R4 = Array.isArray(answers) ? answers[11] : (stressPulse?.R4 ?? null)
+
+      const P1 = Array.isArray(answers) ? answers[12] : (physicalCheck?.P1 ?? physicalCheck?.PH1 ?? null)
+      const P2 = Array.isArray(answers) ? answers[13] : (physicalCheck?.P2 ?? physicalCheck?.PH2 ?? null)
+      const P3 = Array.isArray(answers) ? answers[14] : (physicalCheck?.P3 ?? physicalCheck?.PH3 ?? null)
+      const P4 = Array.isArray(answers) ? answers[15] : (physicalCheck?.P4 ?? physicalCheck?.PH4 ?? null)
+
+      const ledgerDoc = new AssessmentLedger({
+        userId: user._id,
+        name: user.name || "",
+        age: user.age != null ? Number(user.age) : null,
+        gender: user.gender || "",
+        profession: user.occupation || user.profession || user.designation || "",
+        hoursOfSleep: user.sleepHours != null ? Number(user.sleepHours) : null,
+        medicalHistory: user.illnessHistory || user.medicalHistory || "",
+
+        M1, M2, M3, M4,
+        S1, S2, S3, S4,
+        R1, R2, R3, R4,
+        P1, P2, P3, P4,
+
+        calculatedMSI: msi,
+        assessmentType: msiEntryType, // "baseline" or "weekly"
+        assessmentDate: now,
+      })
+      await ledgerDoc.save()
+      console.log(`[ASSESSMENT LEDGER] Flat record saved: User=${user.name}, Type=${msiEntryType}, MSI=${msi}`)
+    } catch (ledgerErr) {
+      console.error("[ASSESSMENT LEDGER] Error saving flat baseline ledger record:", ledgerErr.message)
+    }
+
     // 3. Prepare new history entry
     const newHistoryEntry = {
       score: msi,
@@ -383,13 +486,6 @@ router.post("/baseline", requireActiveEmployee, async (req, res) => {
       })
     }
     history.push(newHistoryEntry)
-
-    // Unified MSI Array logic:
-    // If the user does not yet have a baseline entry in msi[], mark this first one as 'baseline'.
-    // Every subsequent weekly assessment is appended as 'weekly'.
-    const existingMsiArray = Array.isArray(user.msi) ? user.msi : []
-    const hasBaselineInArray = existingMsiArray.some((item) => item.type === "baseline")
-    const msiEntryType = !hasBaselineInArray ? "baseline" : "weekly"
 
     const newMsiArrayItem = {
       score: Math.round(msi),
@@ -481,9 +577,24 @@ router.get("/metrics", requireActiveEmployee, async (req, res) => {
       userId: user._id,
     }).sort({ completedAt: -1 })
 
+    // ── Unified MSI Array as Source of Truth ──────────────────────────────
+    const msiArray = Array.isArray(user.msi) && user.msi.length > 0
+      ? user.msi
+      : []
+
+    // Baseline item is item where type === "baseline" (or fallback to legacy baselineMsi)
+    const baselineItem = msiArray.find((item) => item.type === "baseline" && typeof item.score === "number")
+    const resolvedBaselineMsi = baselineItem ? baselineItem.score : (user.baselineMsi ?? null)
+    const hasBaseline = resolvedBaselineMsi != null
+
+    // Latest MSI is ALWAYS the last item in the MSI array
+    const latestMsiItem = msiArray.length > 0 ? msiArray[msiArray.length - 1] : null
+    let currentMsi = latestMsiItem && typeof latestMsiItem.score === "number" ? latestMsiItem.score : resolvedBaselineMsi
+    let currentCategory = currentMsi != null ? getCategory(currentMsi) : null
+    let latestDailyDate = latestMsiItem ? latestMsiItem.recordedAt : (latestDaily ? latestDaily.completedAt : null)
+
     // Calculate baseline eligibility & timing
-    const lastDate = user.lastBaselineMsiDate || user.baselineCompletedAt || null
-    const hasBaseline = user.baselineMsi != null && lastDate != null
+    const lastDate = user.lastBaselineMsiDate || user.baselineCompletedAt || (baselineItem ? baselineItem.recordedAt : null)
     let baselineEligibility = {
       eligible: true,
       status: "initial",
@@ -492,7 +603,7 @@ router.get("/metrics", requireActiveEmployee, async (req, res) => {
       nextBaselineMsiDate: null,
     }
 
-    if (hasBaseline) {
+    if (hasBaseline && lastDate) {
       const lastTime = new Date(lastDate).getTime()
       const nextTime = user.nextBaselineMsiDate
         ? new Date(user.nextBaselineMsiDate).getTime()
@@ -520,28 +631,16 @@ router.get("/metrics", requireActiveEmployee, async (req, res) => {
       }
     }
 
-    // ── Unified MSI Array as Source of Truth ──────────────────────────────
-    const msiArray = Array.isArray(user.msi) && user.msi.length > 0
-      ? user.msi
-      : []
-
-    // Baseline item is item where type === "baseline" (or fallback to legacy baselineMsi)
-    const baselineItem = msiArray.find((item) => item.type === "baseline")
-    const resolvedBaselineMsi = baselineItem ? baselineItem.score : (user.baselineMsi ?? null)
-
-    // Latest MSI is ALWAYS the last item in the MSI array
-    const latestMsiItem = msiArray.length > 0 ? msiArray[msiArray.length - 1] : null
-    let currentMsi = latestMsiItem ? latestMsiItem.score : resolvedBaselineMsi
-    let currentCategory = currentMsi != null ? getCategory(currentMsi) : null
-    let latestDailyDate = latestMsiItem ? latestMsiItem.recordedAt : (latestDaily ? latestDaily.completedAt : null)
-
     return res.status(200).json({
       success: true,
       data: {
         msi: msiArray,
         latestMSI: latestMsiItem,
+        latest: latestMsiItem ? latestMsiItem.score : null,
+        baseline: resolvedBaselineMsi,
         baselineMsi: resolvedBaselineMsi,
         activeBaselineMsi: resolvedBaselineMsi,
+        hasBaseline: Boolean(hasBaseline),
         baselineCompletedAt: user.baselineCompletedAt ?? (baselineItem ? baselineItem.recordedAt : null),
         baselineUpdatedAt: user.lastBaselineMsiDate || user.baselineCompletedAt || (baselineItem ? baselineItem.recordedAt : null),
         baselineValidUntil: user.nextBaselineMsiDate || null,
