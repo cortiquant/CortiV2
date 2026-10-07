@@ -67,6 +67,22 @@ if (!allowedOrigins.includes("http://localhost:8443")) {
 // ─────────────────────────────────────────────────────────────────────────────
 const app = express()
 
+// ── Trust Proxy Configuration ────────────────────────────────────────────────
+// Enables Express to read real client IP from X-Forwarded-For when deployed
+// behind reverse proxies (Nginx, Cloudflare, AWS ALB, Render, Heroku).
+// Configurable via TRUST_PROXY env var; defaults to 1 hop in production, false in development.
+function getTrustProxySetting() {
+  if (process.env.TRUST_PROXY !== undefined) {
+    const val = process.env.TRUST_PROXY.trim().toLowerCase()
+    if (val === "false" || val === "0") return false
+    if (val === "true") return true
+    if (!isNaN(val)) return Number(val)
+    return process.env.TRUST_PROXY.trim()
+  }
+  return process.env.NODE_ENV === "production" ? 1 : false
+}
+app.set("trust proxy", getTrustProxySetting())
+
 // ── CORS ──────────────────────────────────────────────────────────────────────
 app.use(cors({
   origin: (origin, callback) => {
@@ -90,25 +106,9 @@ app.use(cors({
 app.use(express.json({ limit: "1mb" }))
 app.use(express.urlencoded({ extended: true }))
 
-// ── Global rate limiting (protect against brute-force) ────────────────────────
-const globalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 200,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { success: false, message: "Too many requests. Please try again later." },
-})
+// ── Global rate limiting (protect against brute-force DDoS) ───────────────────
+const { globalLimiter } = require("./middleware/rateLimiters")
 app.use(globalLimiter)
-
-// ── Stricter limiter for auth endpoints ───────────────────────────────────────
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { success: false, message: "Too many login attempts. Please wait 15 minutes." },
-})
-app.use("/api/auth", authLimiter)
 
 
 

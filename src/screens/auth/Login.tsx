@@ -213,6 +213,7 @@ export default function Login({ onEmployeeSignIn, onCreateAccount, onHR, onBack,
 
   // ── Sign-in handler ──
   async function handleSignIn() {
+    if (loading) return
     setErrorMsg("")
     setLoading(true)
     abortRef.current = new AbortController()
@@ -227,7 +228,11 @@ export default function Login({ onEmployeeSignIn, onCreateAccount, onHR, onBack,
       const data = await res.json()
 
       if (!res.ok || !data.success) {
-        setErrorMsg(data.message || "Invalid username or password.")
+        if (res.status === 429) {
+          setErrorMsg(data.message || "Too many login attempts. Please wait a few minutes and try again.")
+        } else {
+          setErrorMsg(data.message || "Invalid username or password.")
+        }
         return
       }
 
@@ -292,6 +297,7 @@ export default function Login({ onEmployeeSignIn, onCreateAccount, onHR, onBack,
   // ── Forgot Password Request Handler ──
   async function handleRequestPasswordReset(isResend = false) {
     if (isResend && resendCooldown > 0) return
+    if (loading) return
     setErrorMsg("")
 
     const clean = forgotEmail.trim()
@@ -307,7 +313,12 @@ export default function Login({ onEmployeeSignIn, onCreateAccount, onHR, onBack,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: clean }),
       })
-      await res.json()
+      const data = await res.json()
+
+      if (res.status === 429) {
+        setErrorMsg(data.message || "Too many password reset requests. Please wait a few minutes and try again.")
+        return
+      }
 
       // Regardless of server status (to prevent user enumeration), advance to "check-email"
       setScreen("check-email")
@@ -332,6 +343,7 @@ export default function Login({ onEmployeeSignIn, onCreateAccount, onHR, onBack,
 
   // ── B2C Individual User Account Creation ──
   async function handleCreateAccount() {
+    if (loading) return
     setErrorMsg("")
 
     const cleanName = fullName.trim()
@@ -387,7 +399,11 @@ export default function Login({ onEmployeeSignIn, onCreateAccount, onHR, onBack,
       const data = await res.json()
 
       if (!res.ok || !data.success) {
-        setErrorMsg(data.message || "Account creation failed.")
+        if (res.status === 429) {
+          setErrorMsg(data.message || "Too many signup attempts. Please wait a few minutes and try again.")
+        } else {
+          setErrorMsg(data.message || "Account creation failed.")
+        }
         return
       }
 

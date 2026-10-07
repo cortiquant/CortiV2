@@ -9,6 +9,7 @@ const { logActivity } = require("../services/activityService")
 const { sendEmployeeApprovalNotification, sendEmployeeApprovalStatusEmail } = require("../services/notificationService")
 const { normalizeDepartmentName } = require("../services/departmentService")
 const { signToken, requireAuth, requireHR } = require("../middleware/auth")
+const { accountLoginLimiter, ipLoginLimiter, signupLimiter, orgVerificationLimiter, passwordResetLimiter } = require("../middleware/rateLimiters")
 
 const { generateOrgEmployeeId, isValidOrgEmployeeId } = require("../services/employeeIdService")
 
@@ -22,7 +23,7 @@ async function generateEmployeeId(organisationId) {
 //
 // Public — validates an organisation code before account creation.
 // ─────────────────────────────────────────────────────────────────────────────
-router.post("/verify-organisation", async (req, res) => {
+router.post("/verify-organisation", orgVerificationLimiter, async (req, res) => {
   try {
     const { organisationCode } = req.body
 
@@ -71,7 +72,7 @@ router.post("/verify-organisation", async (req, res) => {
 })
 
 // Alias for verify-organisation
-router.post("/verify-organisation-code", async (req, res) => {
+router.post("/verify-organisation-code", orgVerificationLimiter, async (req, res) => {
   try {
     const { organisationCode } = req.body
 
@@ -126,7 +127,7 @@ router.post("/verify-organisation-code", async (req, res) => {
 // Creates account with role "employee" and status "Active".
 // Returns token & user so user can proceed directly into personal CortiQuant onboarding/baseline.
 // ─────────────────────────────────────────────────────────────────────────────
-router.post("/signup", async (req, res) => {
+router.post("/signup", signupLimiter, async (req, res) => {
   try {
     const { name, username, email, password, privacyConsent, participantConsent } = req.body
 
@@ -254,7 +255,7 @@ router.post("/signup", async (req, res) => {
 // Generates a secure random reset token, stores its SHA-256 hash with 1 hour expiration,
 // emails the reset link to the user, and returns only a generic success response.
 // ─────────────────────────────────────────────────────────────────────────────
-router.post("/forgot-password", async (req, res) => {
+router.post("/forgot-password", passwordResetLimiter, async (req, res) => {
   try {
     const { email, identifier } = req.body
     const cleanEmail = (email || identifier || "").trim()
@@ -356,7 +357,7 @@ router.get("/validate-reset-token", async (req, res) => {
 //
 // Public — Set a new password using the reset token from the email link.
 // ─────────────────────────────────────────────────────────────────────────────
-router.post("/reset-password", async (req, res) => {
+router.post("/reset-password", passwordResetLimiter, async (req, res) => {
   try {
     const { token, newPassword } = req.body
 
@@ -414,7 +415,7 @@ router.post("/reset-password", async (req, res) => {
 // Status is set to "OnboardingRequired".
 // Returns JWT token so newly created account can immediately proceed to Corporate Onboarding.
 // ─────────────────────────────────────────────────────────────────────────────
-router.post("/employee/signup", async (req, res) => {
+router.post("/employee/signup", signupLimiter, async (req, res) => {
   try {
     const { name, username, email, password, privacyConsent, participantConsent, organisationCode, orgCode, status } = req.body
 
@@ -616,7 +617,7 @@ router.post("/employee/signup", async (req, res) => {
 // Public — employees log in with username (or email for legacy accounts).
 // Returns user, token, and status guiding navigation.
 // ─────────────────────────────────────────────────────────────────────────────
-router.post("/employee/login", async (req, res) => {
+router.post("/employee/login", [ipLoginLimiter, accountLoginLimiter], async (req, res) => {
   try {
     const { username, email, password } = req.body
     const identifier = (username || email || "").trim()
@@ -791,7 +792,7 @@ router.get("/me", requireAuth, async (req, res) => {
 // Public — HR / admin accounts only.
 // HR accounts are created directly in MongoDB by the Founder — no signup route.
 // ─────────────────────────────────────────────────────────────────────────────
-router.post("/hr/login", async (req, res) => {
+router.post("/hr/login", [ipLoginLimiter, accountLoginLimiter], async (req, res) => {
   try {
     const { email, password } = req.body
 
@@ -895,7 +896,7 @@ router.post("/hr/login", async (req, res) => {
 //
 // Unified login route (recognizes role: "HR", "employee", "admin")
 // ─────────────────────────────────────────────────────────────────────────────
-router.post("/login", async (req, res) => {
+router.post("/login", [ipLoginLimiter, accountLoginLimiter], async (req, res) => {
   try {
     const { email, password } = req.body
 
@@ -978,7 +979,7 @@ router.post("/login", async (req, res) => {
 // Public — Founder / Admin accounts only.
 // Authenticates credentials against database with fallback support for initial founder seed.
 // ─────────────────────────────────────────────────────────────────────────────
-router.post("/admin/login", async (req, res) => {
+router.post("/admin/login", [ipLoginLimiter, accountLoginLimiter], async (req, res) => {
   try {
     const { email, password } = req.body
 

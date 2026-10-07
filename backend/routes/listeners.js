@@ -4,6 +4,7 @@ const Listener = require("../models/Listener")
 const ListenerInvitation = require("../models/ListenerInvitation")
 const { logActivity } = require("../services/activityService")
 const { signToken, requireListener, requireAuth } = require("../middleware/auth")
+const { ipLoginLimiter, accountLoginLimiter } = require("../middleware/rateLimiters")
 const { sendBookingConfirmationEmail } = require("../services/emailService")
 const {
   formatDisplayDate,
@@ -69,7 +70,7 @@ function parseTimeToMinutes(t) {
 //
 // Public — Listener login using email & password
 // ─────────────────────────────────────────────────────────────────────────────
-router.post("/login", async (req, res) => {
+router.post("/login", [ipLoginLimiter, accountLoginLimiter], async (req, res) => {
   try {
     const { email, password } = req.body
 
