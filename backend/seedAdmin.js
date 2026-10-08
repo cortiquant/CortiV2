@@ -30,14 +30,20 @@ async function seedAdmin() {
       console.log("Using existing organisation:", org.name, org.code)
     }
 
-    const email = "soham.founder@gmail.com"
-    const password = "soam@mru"
+    const email = (process.env.ADMIN_EMAIL || process.env.INITIAL_ADMIN_EMAIL || "").toLowerCase().trim()
+    const password = process.env.ADMIN_PASSWORD || process.env.INITIAL_ADMIN_PASSWORD
+
+    if (!email || !password) {
+      console.error("[SEED] FATAL: ADMIN_EMAIL and ADMIN_PASSWORD must be defined in .env.")
+      process.exit(1)
+    }
+
     const passwordHash = await User.hashPassword(password)
 
     // Check if user already exists
     let adminUser = await User.findOne({ email: email.toLowerCase() })
     if (adminUser) {
-      adminUser.name = "Soham (Founder)"
+      adminUser.name = process.env.ADMIN_NAME || "Founder Admin"
       adminUser.passwordHash = passwordHash
       adminUser.role = "admin"
       adminUser.status = "Approved"
@@ -48,7 +54,7 @@ async function seedAdmin() {
       console.log("Updated existing user to admin/founder with new credentials:", email)
     } else {
       adminUser = await User.create({
-        name: "Soham (Founder)",
+        name: process.env.ADMIN_NAME || "Founder Admin",
         email: email.toLowerCase(),
         passwordHash,
         role: "admin",

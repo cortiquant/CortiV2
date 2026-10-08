@@ -1036,13 +1036,11 @@ router.post("/admin/login", [ipLoginLimiter, accountLoginLimiter], async (req, r
       console.warn("[AUTH] Database query error during admin login:", dbErr.message)
     }
 
-    // 2. Check founder initial root credentials fallback
-    if (trimmedEmail === "soham.founder@gmail.com" && password === "soam@mru") {
-      const token = jwt.sign(
-        { id: "founder-admin-root", role: "admin", email: trimmedEmail },
-        process.env.JWT_SECRET || "cortiquant-secret-key",
-        { expiresIn: "7d" }
-      )
+    // 2. Check founder initial root credentials fallback from environment variables
+    const initialAdminEmail = (process.env.ADMIN_EMAIL || process.env.INITIAL_ADMIN_EMAIL || "").toLowerCase().trim()
+    const initialAdminPassword = process.env.ADMIN_PASSWORD || process.env.INITIAL_ADMIN_PASSWORD
+    if (initialAdminEmail && initialAdminPassword && trimmedEmail === initialAdminEmail && password === initialAdminPassword) {
+      const token = signToken("founder-admin-root", { role: "admin", email: trimmedEmail })
 
       await logActivity({
         req,

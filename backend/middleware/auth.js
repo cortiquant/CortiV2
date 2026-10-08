@@ -35,15 +35,16 @@ async function requireAuth(req, res, next) {
     const Listener = require("../models/Listener")
 
     if (decoded.id === "founder-admin-root") {
-      user = await User.findOne({ email: decoded.email || "soham.founder@gmail.com", role: "admin" })
+      const founderEmail = (decoded.email || process.env.ADMIN_EMAIL || process.env.INITIAL_ADMIN_EMAIL || "admin@cortiquant.online").toLowerCase()
+      user = await User.findOne({ email: founderEmail, role: "admin" })
       if (!user) {
         user = await User.findById(decoded.id).catch(() => null)
       }
       if (!user) {
         user = {
           _id: "founder-admin-root",
-          name: "Soham (Founder)",
-          email: decoded.email || "soham.founder@gmail.com",
+          name: "Founder",
+          email: founderEmail,
           role: "admin",
           status: "Approved",
         }

@@ -1922,7 +1922,7 @@ router.get("/settings/profile", requireAdmin, async (req, res) => {
     const adminData = {
       id: dbUser?._id || user._id,
       name: dbUser?.name || user.name || "Founder",
-      email: dbUser?.email || user.email || "soham.founder@gmail.com",
+      email: dbUser?.email || user.email || process.env.ADMIN_EMAIL || "admin@cortiquant.online",
       role: "Founder",
     }
 
@@ -1961,10 +1961,12 @@ router.patch("/settings/profile", requireAdmin, async (req, res) => {
 
     if (!dbUser) {
       // If user doesn't exist yet in DB, create it
+      const defaultAdminPass = process.env.ADMIN_PASSWORD || process.env.INITIAL_ADMIN_PASSWORD || require("crypto").randomBytes(16).toString("hex")
+      const defaultAdminEmail = (process.env.ADMIN_EMAIL || process.env.INITIAL_ADMIN_EMAIL || "admin@cortiquant.online").toLowerCase()
       dbUser = await User.create({
         name: cleanName,
-        email: (user.email || "soham.founder@gmail.com").toLowerCase(),
-        passwordHash: await User.hashPassword("soam@mru"),
+        email: (user.email || defaultAdminEmail).toLowerCase(),
+        passwordHash: await User.hashPassword(defaultAdminPass),
         role: "admin",
         status: "Approved",
       })
@@ -2051,8 +2053,11 @@ router.patch("/settings/password", requireAdmin, async (req, res) => {
     let isCurrentValid = false
     if (dbUser && dbUser.passwordHash) {
       isCurrentValid = await dbUser.comparePassword(currentPassword)
-    } else if (currentPassword === "soam@mru") {
-      isCurrentValid = true
+    } else {
+      const initialAdminPassword = process.env.ADMIN_PASSWORD || process.env.INITIAL_ADMIN_PASSWORD
+      if (initialAdminPassword && currentPassword === initialAdminPassword) {
+        isCurrentValid = true
+      }
     }
 
     if (!isCurrentValid) {
@@ -2074,9 +2079,10 @@ router.patch("/settings/password", requireAdmin, async (req, res) => {
     const newHash = await User.hashPassword(newPassword)
 
     if (!dbUser) {
+      const defaultAdminEmail = (process.env.ADMIN_EMAIL || process.env.INITIAL_ADMIN_EMAIL || "admin@cortiquant.online").toLowerCase()
       dbUser = await User.create({
-        name: user.name || "Soham (Founder)",
-        email: (user.email || "soham.founder@gmail.com").toLowerCase(),
+        name: user.name || "Founder Admin",
+        email: (user.email || defaultAdminEmail).toLowerCase(),
         passwordHash: newHash,
         role: "admin",
         status: "Approved",

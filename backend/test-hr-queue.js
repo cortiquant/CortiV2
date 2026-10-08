@@ -10,7 +10,10 @@ const CorporateOnboarding = require("./models/CorporateOnboarding")
 const ActivityLog = require("./models/ActivityLog")
 const jwt = require("jsonwebtoken")
 
-const JWT_SECRET = process.env.JWT_SECRET || "cortiquant-development-secret-key-2024"
+const JWT_SECRET = process.env.JWT_SECRET
+if (!JWT_SECRET) {
+  throw new Error("JWT_SECRET must be set in .env")
+}
 
 async function runTest() {
   console.log("Connecting to MongoDB...")
