@@ -529,19 +529,16 @@ export default function StressDriverFlow({
   const [contributingFactors, setContributingFactors] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null)
-  const [isTransitioning, setIsTransitioning] = useState(false)
-
   function startCategory(cat: CauseCategory) {
     setSelectedCategory(cat)
     setQIdx(0)
     setResponses([])
     setSelectedAnswer(null)
-    setIsTransitioning(false)
     setStage("questions")
   }
 
   function handleSelectAnswer(optionIndex: number, optionText: string) {
-    if (!selectedCategory || isTransitioning || submitting) return
+    if (!selectedCategory || submitting) return
     const currentQ = selectedCategory.questions[qIdx]
     const updatedResponses = [
       ...responses,
@@ -554,17 +551,12 @@ export default function StressDriverFlow({
     ]
     setResponses(updatedResponses)
     setSelectedAnswer(optionIndex)
-    setIsTransitioning(true)
-
-    setTimeout(() => {
-      if (qIdx < selectedCategory.questions.length - 1) {
-        setQIdx(qIdx + 1)
-        setSelectedAnswer(null)
-        setIsTransitioning(false)
-      } else {
-        finishAssessment(updatedResponses)
-      }
-    }, 2000)
+    if (qIdx < selectedCategory.questions.length - 1) {
+      setQIdx(qIdx + 1)
+      setSelectedAnswer(null)
+    } else {
+      finishAssessment(updatedResponses)
+    }
   }
 
   async function finishAssessment(finalResponses: ResponseItem[]) {
@@ -762,12 +754,12 @@ export default function StressDriverFlow({
           {currentQ.question}
         </h3>
 
-        <div className="space-y-2.5">
+        <div key={qIdx} className="space-y-2.5 animate-answer-options">
           {currentQ.options?.map((opt, i) => (
             <button
               key={opt}
               onClick={() => handleSelectAnswer(i, opt)}
-              disabled={isTransitioning || submitting}
+              disabled={submitting}
               className={`w-full flex items-center justify-between px-4 py-3.5 rounded-2xl border transition-all text-left group cursor-pointer disabled:opacity-60 ${
                 selectedAnswer === i
                   ? "border-purple-core bg-purple-core/10"

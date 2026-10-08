@@ -103,7 +103,6 @@ export default function BaselineMSI({ onComplete, onBack }: BaselineMSIProps) {
   const [step, setStep] = useState(0)
   const [answers, setAnswers] = useState<(number | null)[]>(Array(QUESTIONS.length).fill(null))
   const [serverBaseline, setServerBaseline] = useState<number | null>(null)
-  const [isTransitioning, setIsTransitioning] = useState(false)
   const [isUpdateFlow, setIsUpdateFlow] = useState<boolean>(() => {
     return localStorage.getItem("cq_baseline_msi") != null
   })
@@ -196,21 +195,15 @@ export default function BaselineMSI({ onComplete, onBack }: BaselineMSIProps) {
   }
 
   function select(val: number) {
-    if (isTransitioning) return
-
     const next = [...answers]
     next[step] = val
     setAnswers(next)
-    setIsTransitioning(true)
-    setTimeout(() => {
-      if (step < QUESTIONS.length - 1) {
-        setStep(step + 1)
-        setIsTransitioning(false)
-      } else {
-        const completed = [...answers.slice(0, step), val] as number[]
-        submitBaselineToBackend(completed)
-      }
-    }, 2000)
+    if (step < QUESTIONS.length - 1) {
+      setStep(step + 1)
+    } else {
+      const completed = [...answers.slice(0, step), val] as number[]
+      submitBaselineToBackend(completed)
+    }
   }
 
   function handleBack() {
@@ -397,11 +390,11 @@ export default function BaselineMSI({ onComplete, onBack }: BaselineMSIProps) {
         <span className="text-xs text-text-muted">· {sectionQIndex + 1}/{totalInSection}</span>
       </div>
 
-      <div key={step} className="animate-fade-up flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col">
         <h2 className="text-lg font-bold text-warm-white mb-6 leading-snug">{q.text}</h2>
 
         {q.type === "emoji" ? (
-          <div className="grid grid-cols-5 gap-2">
+          <div key={step} className="grid grid-cols-5 gap-2 animate-answer-options">
             {EMOJI_OPTIONS.map((opt, i) => (
               <button
                 key={opt.label}
@@ -420,7 +413,7 @@ export default function BaselineMSI({ onComplete, onBack }: BaselineMSIProps) {
             ))}
           </div>
         ) : (
-          <div className="space-y-2">
+          <div key={step} className="space-y-2 animate-answer-options">
             {FREQ_OPTIONS.map((opt, i) => (
               <button
                 key={opt}

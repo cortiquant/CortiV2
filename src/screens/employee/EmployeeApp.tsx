@@ -4353,7 +4353,6 @@ function ArchetypeScreen({ onNav }: { onNav: (s: Screen) => void }) {
   const [qIdx, setQIdx] = useState(0)
   const [answers, setAnswers] = useState<number[]>([])
   const [selected, setSelected] = useState<number | null>(null)
-  const [isTransitioning, setIsTransitioning] = useState(false)
   const [copied, setCopied] = useState(false)
 
   const savedArchetype = localStorage.getItem("cq_archetype")
@@ -4362,25 +4361,18 @@ function ArchetypeScreen({ onNav }: { onNav: (s: Screen) => void }) {
     : null
 
   function pick(optIdx: number) {
-    if (isTransitioning) return
-
     setSelected(optIdx)
     const next = [...answers, optIdx]
     setAnswers(next)
-    setIsTransitioning(true)
-
-    setTimeout(() => {
-      if (qIdx < QUIZ_QUESTIONS.length - 1) {
-        setQIdx(qIdx + 1)
-        setSelected(null)
-        setIsTransitioning(false)
-      } else {
-        setStage("calculating")
-        const r = calcArchetype(next)
-        localStorage.setItem("cq_archetype", r.winner)
-        setTimeout(() => setStage("result"), 2200)
-      }
-    }, 2000)
+    if (qIdx < QUIZ_QUESTIONS.length - 1) {
+      setQIdx(qIdx + 1)
+      setSelected(null)
+    } else {
+      setStage("calculating")
+      const r = calcArchetype(next)
+      localStorage.setItem("cq_archetype", r.winner)
+      setTimeout(() => setStage("result"), 2200)
+    }
   }
 
   function retake() {
@@ -4596,7 +4588,7 @@ function ArchetypeScreen({ onNav }: { onNav: (s: Screen) => void }) {
         <div className="h-full bg-gradient-to-r from-purple-primary to-purple-core rounded-full transition-all duration-400" style={{ width: `${progress + 20}%` }} />
       </div>
 
-      <div key={qIdx} className="animate-fade-up flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col">
         <div className="inline-flex items-center gap-2 bg-purple-core/10 border border-purple-core/25 rounded-full px-3 py-1 mb-4 self-start">
           <span className="font-mono-data text-xs text-purple-core">Q{qIdx + 1}</span>
           <div className="w-px h-3 bg-border-s" />
@@ -4605,12 +4597,11 @@ function ArchetypeScreen({ onNav }: { onNav: (s: Screen) => void }) {
 
         <h2 className="text-lg font-semibold text-warm-white mb-6 leading-snug">{q.text}</h2>
 
-        <div className="space-y-3">
+        <div key={qIdx} className="space-y-3 animate-answer-options">
           {q.options.map((opt, i) => (
             <button
               key={i}
               onClick={() => pick(i)}
-              disabled={isTransitioning}
               className={`w-full flex items-start gap-4 px-4 py-4 rounded-2xl border text-left transition-all duration-150 disabled:opacity-80 ${
                 selected === i ? "border-purple-core bg-purple-core/10 scale-[0.98]" : "border-border-p bg-elevated hover:border-border-s"
               }`}
