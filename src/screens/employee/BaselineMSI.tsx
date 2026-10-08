@@ -103,6 +103,7 @@ export default function BaselineMSI({ onComplete, onBack }: BaselineMSIProps) {
   const [step, setStep] = useState(0)
   const [answers, setAnswers] = useState<(number | null)[]>(Array(QUESTIONS.length).fill(null))
   const [serverBaseline, setServerBaseline] = useState<number | null>(null)
+  const [isTransitioning, setIsTransitioning] = useState(false)
   const [isUpdateFlow, setIsUpdateFlow] = useState<boolean>(() => {
     return localStorage.getItem("cq_baseline_msi") != null
   })
@@ -195,17 +196,21 @@ export default function BaselineMSI({ onComplete, onBack }: BaselineMSIProps) {
   }
 
   function select(val: number) {
+    if (isTransitioning) return
+
     const next = [...answers]
     next[step] = val
     setAnswers(next)
+    setIsTransitioning(true)
     setTimeout(() => {
       if (step < QUESTIONS.length - 1) {
         setStep(step + 1)
+        setIsTransitioning(false)
       } else {
         const completed = [...answers.slice(0, step), val] as number[]
         submitBaselineToBackend(completed)
       }
-    }, 200)
+    }, 2000)
   }
 
   function handleBack() {

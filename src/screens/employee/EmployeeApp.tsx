@@ -4353,6 +4353,7 @@ function ArchetypeScreen({ onNav }: { onNav: (s: Screen) => void }) {
   const [qIdx, setQIdx] = useState(0)
   const [answers, setAnswers] = useState<number[]>([])
   const [selected, setSelected] = useState<number | null>(null)
+  const [isTransitioning, setIsTransitioning] = useState(false)
   const [copied, setCopied] = useState(false)
 
   const savedArchetype = localStorage.getItem("cq_archetype")
@@ -4361,20 +4362,25 @@ function ArchetypeScreen({ onNav }: { onNav: (s: Screen) => void }) {
     : null
 
   function pick(optIdx: number) {
+    if (isTransitioning) return
+
     setSelected(optIdx)
+    const next = [...answers, optIdx]
+    setAnswers(next)
+    setIsTransitioning(true)
+
     setTimeout(() => {
-      const next = [...answers, optIdx]
-      setAnswers(next)
-      setSelected(null)
       if (qIdx < QUIZ_QUESTIONS.length - 1) {
         setQIdx(qIdx + 1)
+        setSelected(null)
+        setIsTransitioning(false)
       } else {
         setStage("calculating")
         const r = calcArchetype(next)
         localStorage.setItem("cq_archetype", r.winner)
         setTimeout(() => setStage("result"), 2200)
       }
-    }, 220)
+    }, 2000)
   }
 
   function retake() {
@@ -4382,6 +4388,7 @@ function ArchetypeScreen({ onNav }: { onNav: (s: Screen) => void }) {
     setQIdx(0)
     setAnswers([])
     setSelected(null)
+    setIsTransitioning(false)
     localStorage.removeItem("cq_archetype")
   }
 
@@ -4603,7 +4610,8 @@ function ArchetypeScreen({ onNav }: { onNav: (s: Screen) => void }) {
             <button
               key={i}
               onClick={() => pick(i)}
-              className={`w-full flex items-start gap-4 px-4 py-4 rounded-2xl border text-left transition-all duration-150 ${
+              disabled={isTransitioning}
+              className={`w-full flex items-start gap-4 px-4 py-4 rounded-2xl border text-left transition-all duration-150 disabled:opacity-80 ${
                 selected === i ? "border-purple-core bg-purple-core/10 scale-[0.98]" : "border-border-p bg-elevated hover:border-border-s"
               }`}
             >
