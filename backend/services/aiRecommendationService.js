@@ -482,6 +482,7 @@ async function callGeminiAPI(apiKey, prompt) {
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    signal: AbortSignal.timeout(10000),
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: {
@@ -512,6 +513,7 @@ async function callOpenAICompatibleAPI(apiKey, prompt) {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
+    signal: AbortSignal.timeout(10000),
     body: JSON.stringify({
       model,
       messages: [

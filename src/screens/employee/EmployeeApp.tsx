@@ -369,15 +369,36 @@ function MsiGauge({ pct, color, size = 64 }: { pct: number | null; color: string
   )
 }
 
+interface DashboardSessionCache {
+  token: string
+  timestamp: number
+  profile: any
+  metrics: any
+  rootCause: any
+  recommendations: any[]
+}
+let homeDashboardCache: DashboardSessionCache | null = null
+
+export function clearDashboardCache() {
+  homeDashboardCache = null
+}
+
 function HomeScreen({ onNav }: { onNav: (s: Screen) => void }) {
-  const [employeeProfile, setEmployeeProfile] = useState<any>(null)
-  const [assessmentMetrics, setAssessmentMetrics] = useState<any>(null)
-  const [latestRootCause, setLatestRootCause] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
+  const currentToken = localStorage.getItem("cq_token") || ""
+  const isCacheValid = Boolean(
+    homeDashboardCache &&
+    homeDashboardCache.token === currentToken &&
+    Date.now() - homeDashboardCache.timestamp < 60000
+  )
+
+  const [employeeProfile, setEmployeeProfile] = useState<any>(() => isCacheValid ? homeDashboardCache!.profile : null)
+  const [assessmentMetrics, setAssessmentMetrics] = useState<any>(() => isCacheValid ? homeDashboardCache!.metrics : null)
+  const [latestRootCause, setLatestRootCause] = useState<any>(() => isCacheValid ? homeDashboardCache!.rootCause : null)
+  const [loading, setLoading] = useState(!isCacheValid)
   const [unreadCount, setUnreadCount] = useState<number>(() => getNotifications().filter((n) => !n.read).length)
 
   // Dynamic AI Recommendations for "For right now" (3–4 recommendations)
-  const [recommendations, setRecommendations] = useState<any[]>([])
+  const [recommendations, setRecommendations] = useState<any[]>(() => isCacheValid ? (homeDashboardCache!.recommendations || []) : [])
   const [recsLoading, setRecsLoading] = useState(false)
 
   const fetchRecommendations = useCallback(() => {
@@ -392,6 +413,9 @@ function HomeScreen({ onNav }: { onNav: (s: Screen) => void }) {
       .then((data) => {
         if (data.success && data.data?.recommendations?.length > 0) {
           setRecommendations(data.data.recommendations)
+          if (homeDashboardCache && homeDashboardCache.token === token) {
+            homeDashboardCache.recommendations = data.data.recommendations
+          }
         } else {
           // Check local cache if backend had none
           const localSaved = localStorage.getItem("cq_latest_recommendations")
@@ -425,9 +449,20 @@ function HomeScreen({ onNav }: { onNav: (s: Screen) => void }) {
       .catch(() => {})
   }, [])
 
-  const fetchDashboardData = useCallback(() => {
+  const fetchDashboardData = useCallback((force = false) => {
     const token = localStorage.getItem("cq_token")
     if (!token) return
+
+    if (!force && homeDashboardCache && homeDashboardCache.token === token && Date.now() - homeDashboardCache.timestamp < 60000) {
+      setEmployeeProfile(homeDashboardCache.profile)
+      setAssessmentMetrics(homeDashboardCache.metrics)
+      setLatestRootCause(homeDashboardCache.rootCause)
+      if (homeDashboardCache.recommendations?.length > 0) {
+        setRecommendations(homeDashboardCache.recommendations)
+      }
+      setLoading(false)
+      return
+    }
 
     Promise.all([
       fetch("/api/employee/profile", {
@@ -441,6 +476,7 @@ function HomeScreen({ onNav }: { onNav: (s: Screen) => void }) {
       }).then((r) => r.json()),
     ])
       .then(([profData, metricsData, rootCauseData]) => {
+        let recsToSave = recommendations
         if (profData.success && profData.data) {
           setEmployeeProfile(profData.data)
           if (profData.data.name) {
@@ -470,32 +506,48 @@ function HomeScreen({ onNav }: { onNav: (s: Screen) => void }) {
           localStorage.setItem("cq_latest_root_cause", JSON.stringify(rootCauseData.data))
         }
 
+        // Populate session cache
+        homeDashboardCache = {
+          token,
+          timestamp: Date.now(),
+          profile: profData.data,
+          metrics: metricsData.data,
+          rootCause: rootCauseData.data,
+          recommendations: recsToSave,
+        }
+
         // Fetch latest saved AI recommendations
         fetchRecommendations()
         fetchNotifications()
       })
       .catch((err) => console.warn("[DASHBOARD] Fetch error:", err))
       .finally(() => setLoading(false))
-  }, [fetchRecommendations, fetchNotifications])
+  }, [fetchRecommendations, fetchNotifications, recommendations])
 
   useEffect(() => {
-    fetchDashboardData()
+    fetchDashboardData(false)
 
     // Listen for recommendations update event (dispatched right after root-cause completion)
     const handleRecsUpdated = () => {
+      homeDashboardCache = null
       fetchRecommendations()
     }
     // Listen for baseline update event (dispatched right after baseline completion/update)
     const handleBaselineUpdated = (e: any) => {
+      homeDashboardCache = null
       if (e?.detail?.baselineMsi != null) {
         localStorage.setItem("cq_baseline_msi", String(e.detail.baselineMsi))
       }
-      fetchDashboardData()
+      fetchDashboardData(true)
     }
 
     window.addEventListener("cq_recommendations_updated", handleRecsUpdated)
     window.addEventListener("cq_baseline_updated", handleBaselineUpdated)
-    const notifInterval = setInterval(fetchNotifications, 15000)
+    const notifInterval = setInterval(() => {
+      if (!document.hidden) {
+        fetchNotifications()
+      }
+    }, 60000)
     return () => {
       window.removeEventListener("cq_recommendations_updated", handleRecsUpdated)
       window.removeEventListener("cq_baseline_updated", handleBaselineUpdated)
@@ -1080,9 +1132,12 @@ function ResultScreen({ onNav, data }: { onNav: (s: Screen) => void; data: Check
   const feeling = data.feeling || "Stressed"
   const isElevated = ["A little tense", "Stressed", "Overwhelmed"].includes(feeling)
   const [msi, setMsi] = useState<number>(isElevated ? 67 : 44)
-  const [category, setCategory] = useState<string>(msi >= 65 ? "High Stress" : msi >= 45 ? "Moderate" : "Within range")
+  const submittedRef = useRef(false)
 
   useEffect(() => {
+    if (submittedRef.current) return
+    submittedRef.current = true
+
     // Send check-in data to backend assessments API
     const token = localStorage.getItem("cq_token")
     if (token) {
@@ -6180,7 +6235,7 @@ export default function EmployeeApp({ initialScreen = "home" }: { initialScreen?
     return () => {
       window.removeEventListener("cq_baseline_updated", handleBaselineUpdated)
     }
-  }, [screen])
+  }, [])
 
   const isFullscreen = screen === "reset-active"
 

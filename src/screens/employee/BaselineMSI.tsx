@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { getMSIBand } from "../../utils/msiClassification"
 
 interface BaselineMSIProps {
@@ -107,6 +107,7 @@ export default function BaselineMSI({ onComplete, onBack }: BaselineMSIProps) {
     return localStorage.getItem("cq_baseline_msi") != null
   })
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const submittingRef = useRef(false)
 
   useEffect(() => {
     const token = localStorage.getItem("cq_token")
@@ -138,6 +139,9 @@ export default function BaselineMSI({ onComplete, onBack }: BaselineMSIProps) {
   const progress = ((step + 1) / QUESTIONS.length) * 100
 
   async function submitBaselineToBackend(finalAnswers: number[]) {
+    if (submittingRef.current) return
+    submittingRef.current = true
+
     setStage("calculating")
     setErrorMessage(null)
     const localScore = calcMSI(finalAnswers)
@@ -179,15 +183,18 @@ export default function BaselineMSI({ onComplete, onBack }: BaselineMSIProps) {
             setStage("done")
           }, 1500)
         } else {
+          submittingRef.current = false
           const errText = data?.message || "Failed to save baseline assessment. Please try again."
           setErrorMessage(errText)
           setStage("intro")
         }
       } else {
+        submittingRef.current = false
         setErrorMessage("Authentication session expired. Please log in again.")
         setStage("intro")
       }
     } catch (err: any) {
+      submittingRef.current = false
       console.warn("[BASELINE] Error submitting to backend:", err)
       setErrorMessage(err?.message || "Connection error submitting baseline. Please try again.")
       setStage("intro")

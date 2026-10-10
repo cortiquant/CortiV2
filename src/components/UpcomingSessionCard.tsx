@@ -70,12 +70,14 @@ export default function UpcomingSessionCard({
       setLoading(false)
     } else {
       fetchUpcoming()
-      // If we encounter repeated failures, do not continuously hammer the server
-      if (consecutiveErrors >= 3) return
-      const fetchInterval = setInterval(fetchUpcoming, 20000)
+      const fetchInterval = setInterval(() => {
+        if (!document.hidden && consecutiveErrors < 3) {
+          fetchUpcoming()
+        }
+      }, 60000)
       return () => clearInterval(fetchInterval)
     }
-  }, [initialSession, consecutiveErrors])
+  }, [initialSession])
 
   // Live timer tick every 1 second
   useEffect(() => {

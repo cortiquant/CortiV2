@@ -61,22 +61,47 @@ export function isUserAuthenticated(): boolean {
   return !!localStorage.getItem("cq_token")
 }
 
+let cachedAuthMe: { token: string; timestamp: number; data: any } | null = null
+
+export function clearAuthMeCache() {
+  cachedAuthMe = null
+}
+
 export async function requireActiveEmployeeLoader({ request }: { request?: Request } = {}) {
   const token = localStorage.getItem("cq_token")
   if (!token) {
+    cachedAuthMe = null
     return redirect("/company-login")
   }
 
   const url = request ? new URL(request.url) : null
   const isBaselinePath = url ? url.pathname === "/baseline" : false
 
-  // Sync latest status from backend
+  // Sync latest status from backend with 15s short-lived session cache
+  let data: any = null
+  if (cachedAuthMe && cachedAuthMe.token === token && Date.now() - cachedAuthMe.timestamp < 15000) {
+    data = cachedAuthMe.data
+  } else {
+    try {
+      const res = await fetch("/api/auth/me", {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.status === 401) {
+        cachedAuthMe = null
+        localStorage.clear()
+        return redirect("/company-login")
+      }
+      data = await res.json()
+      if (data && data.success) {
+        cachedAuthMe = { token, timestamp: Date.now(), data }
+      }
+    } catch {
+      // Fallback to locally stored status if offline
+    }
+  }
+
   try {
-    const res = await fetch("/api/auth/me", {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    const data = await res.json()
-    if (data.success && data.user) {
+    if (data && data.success && data.user) {
       const rawStatus = data.user.status || data.status
 
       // Check if user needs to complete their personal B2C profile first
@@ -137,9 +162,6 @@ export async function requireActiveEmployeeLoader({ request }: { request?: Reque
         localStorage.setItem("cq_onboarding_status", "incomplete")
         return redirect("/corporate-onboarding")
       }
-    } else if (res.status === 401) {
-      localStorage.clear()
-      return redirect("/company-login")
     }
   } catch {
     // Fallback to locally stored status if offline

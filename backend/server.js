@@ -79,7 +79,8 @@ function getTrustProxySetting() {
     if (!isNaN(val)) return Number(val)
     return process.env.TRUST_PROXY.trim()
   }
-  return process.env.NODE_ENV === "production" ? 1 : false
+  // Default to 1 hop (Nginx / ALB reverse proxy) to preserve client IP isolation
+  return 1
 }
 app.set("trust proxy", getTrustProxySetting())
 
@@ -106,39 +107,7 @@ app.use(cors({
 app.use(express.json({ limit: "1mb" }))
 app.use(express.urlencoded({ extended: true }))
 
-// ── Global rate limiting (protect against brute-force DDoS) ───────────────────
-const { globalLimiter } = require("./middleware/rateLimiters")
-app.use(globalLimiter)
-
-
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Routes
-// ─────────────────────────────────────────────────────────────────────────────
-app.use("/api/auth",        authRoutes)
-app.use("/api/hr/reports",  reportsRoutes)
-app.use("/api/hr",          hrOverviewRoutes)
-app.use("/api/hr",          authRoutes)
-app.use("/api/onboarding",  onboardingRoutes)
-app.use("/api/admin",       adminRoutes)
-app.use("/api/hr/invitations", hrInvitationRoutes)
-app.use("/api/assessments", assessmentsRoutes)
-app.use("/api/employee",    employeeRoutes)
-app.use("/api/user",        employeeRoutes)
-app.use("/api/root-cause-assessments", rootCauseRoutes)
-app.use("/api/ai",          aiRoutes)
-app.use("/api/recommendations", recommendationsRoutes)
-app.use("/api/dumpbag",     dumpbagRoutes)
-app.use("/api/interventions", interventionsRoutes)
-app.use("/api/listener",      listenerRoutes)
-app.use("/api/listeners",     listenerRoutes)
-app.use("/api/listener-sessions", listenerRoutes)
-app.use("/api/sessions",      listenerRoutes)
-app.use("/api/professionals", professionalsRoutes)
-app.use("/api/admin/professionals", adminProfessionalsRoutes)
-app.use("/api/archetype", archetypeValidationRoutes)
-
-// ── Health checks ─────────────────────────────────────────────────────────────
+// ── Health checks (excluded from rate limiting for monitoring and ALB health checks) ──
 app.get("/api/health", (req, res) => {
   res.json({
     success: true,
@@ -171,6 +140,36 @@ app.get("/api/health/db", async (req, res) => {
     })
   }
 })
+
+// ── Global rate limiting (protect against brute-force DDoS) ───────────────────
+const { globalLimiter } = require("./middleware/rateLimiters")
+app.use(globalLimiter)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Routes
+// ─────────────────────────────────────────────────────────────────────────────
+app.use("/api/auth",        authRoutes)
+app.use("/api/hr/reports",  reportsRoutes)
+app.use("/api/hr",          hrOverviewRoutes)
+app.use("/api/hr",          authRoutes)
+app.use("/api/onboarding",  onboardingRoutes)
+app.use("/api/admin",       adminRoutes)
+app.use("/api/hr/invitations", hrInvitationRoutes)
+app.use("/api/assessments", assessmentsRoutes)
+app.use("/api/employee",    employeeRoutes)
+app.use("/api/user",        employeeRoutes)
+app.use("/api/root-cause-assessments", rootCauseRoutes)
+app.use("/api/ai",          aiRoutes)
+app.use("/api/recommendations", recommendationsRoutes)
+app.use("/api/dumpbag",     dumpbagRoutes)
+app.use("/api/interventions", interventionsRoutes)
+app.use("/api/listener",      listenerRoutes)
+app.use("/api/listeners",     listenerRoutes)
+app.use("/api/listener-sessions", listenerRoutes)
+app.use("/api/sessions",      listenerRoutes)
+app.use("/api/professionals", professionalsRoutes)
+app.use("/api/admin/professionals", adminProfessionalsRoutes)
+app.use("/api/archetype", archetypeValidationRoutes)
 
 // ── 404 handler ───────────────────────────────────────────────────────────────
 app.use((req, res) => {
@@ -206,6 +205,9 @@ async function connectDB() {
   try {
     await mongoose.connect(process.env.MONGODB_URI, {
       serverSelectionTimeoutMS: 5000,
+      maxPoolSize: 50,
+      minPoolSize: 5,
+      socketTimeoutMS: 45000,
     })
     console.log("[DB] Connected to MongoDB Atlas")
     startSessionNotificationService()
