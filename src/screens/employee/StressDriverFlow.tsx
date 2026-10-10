@@ -528,16 +528,17 @@ export default function StressDriverFlow({
   const [recommendations, setRecommendations] = useState<Recommendation[]>([])
   const [contributingFactors, setContributingFactors] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
-
+  const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null)
   function startCategory(cat: CauseCategory) {
     setSelectedCategory(cat)
     setQIdx(0)
     setResponses([])
+    setSelectedAnswer(null)
     setStage("questions")
   }
 
   function handleSelectAnswer(optionIndex: number, optionText: string) {
-    if (!selectedCategory) return
+    if (!selectedCategory || submitting) return
     const currentQ = selectedCategory.questions[qIdx]
     const updatedResponses = [
       ...responses,
@@ -549,14 +550,13 @@ export default function StressDriverFlow({
       },
     ]
     setResponses(updatedResponses)
-
-    setTimeout(() => {
-      if (qIdx < selectedCategory.questions.length - 1) {
-        setQIdx(qIdx + 1)
-      } else {
-        finishAssessment(updatedResponses)
-      }
-    }, 220)
+    setSelectedAnswer(optionIndex)
+    if (qIdx < selectedCategory.questions.length - 1) {
+      setQIdx(qIdx + 1)
+      setSelectedAnswer(null)
+    } else {
+      finishAssessment(updatedResponses)
+    }
   }
 
   async function finishAssessment(finalResponses: ResponseItem[]) {
@@ -754,19 +754,29 @@ export default function StressDriverFlow({
           {currentQ.question}
         </h3>
 
-        <div className="space-y-2.5">
+        <div key={qIdx} className="space-y-2.5 animate-answer-options">
           {currentQ.options?.map((opt, i) => (
             <button
               key={opt}
               onClick={() => handleSelectAnswer(i, opt)}
               disabled={submitting}
-              className="w-full flex items-center justify-between px-4 py-3.5 rounded-2xl border border-border-p bg-elevated hover:border-purple-core hover:bg-purple-core/10 transition-all text-left group cursor-pointer disabled:opacity-60"
+              className={`w-full flex items-center justify-between px-4 py-3.5 rounded-2xl border transition-all text-left group cursor-pointer disabled:opacity-60 ${
+                selectedAnswer === i
+                  ? "border-purple-core bg-purple-core/10"
+                  : "border-border-p bg-elevated hover:border-purple-core hover:bg-purple-core/10"
+              }`}
             >
-              <span className="text-sm font-medium text-warm-white group-hover:text-lavender-soft transition-colors">
+              <span className={`text-sm font-medium transition-colors ${
+                selectedAnswer === i ? "text-lavender-soft" : "text-warm-white group-hover:text-lavender-soft"
+              }`}>
                 {opt}
               </span>
-              <div className="w-4 h-4 rounded-full border border-border-s group-hover:border-purple-core flex items-center justify-center transition-colors">
-                <div className="w-1.5 h-1.5 rounded-full bg-transparent group-hover:bg-purple-core transition-colors" />
+              <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${
+                selectedAnswer === i ? "bg-purple-core border-purple-core" : "border-border-s group-hover:border-purple-core"
+              }`}>
+                <div className={`w-1.5 h-1.5 rounded-full transition-colors ${
+                  selectedAnswer === i ? "bg-warm-white" : "bg-transparent group-hover:bg-purple-core"
+                }`} />
               </div>
             </button>
           ))}

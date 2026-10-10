@@ -73,6 +73,11 @@ body {
   to { opacity: 1; }
 }
 
+@keyframes answerOptionsRise {
+  from { opacity: 0; transform: translateY(100vh); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 @keyframes shimmer {
   0% { background-position: -600px 0; }
   100% { background-position: 600px 0; }
@@ -94,6 +99,17 @@ body {
 .animate-float { animation: float 6s ease-in-out infinite; }
 .animate-fade-up { animation: fadeUp 0.45s ease-out forwards; }
 .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+.animate-answer-options > * {
+  animation: answerOptionsRise 2000ms ease-out both;
+}
+
+.animate-answer-options > *:nth-child(2) { animation-delay: 120ms; }
+.animate-answer-options > *:nth-child(3) { animation-delay: 240ms; }
+.animate-answer-options > *:nth-child(4) { animation-delay: 360ms; }
+.animate-answer-options > *:nth-child(5) { animation-delay: 480ms; }
+.animate-answer-options > *:nth-child(6) { animation-delay: 600ms; }
+.animate-answer-options > *:nth-child(7) { animation-delay: 720ms; }
+.animate-answer-options > *:nth-child(8) { animation-delay: 840ms; }
 .animate-shimmer {
   background: linear-gradient(90deg, #191A42 25%, #2A2750 50%, #191A42 75%);
   background-size: 600px 100%;
@@ -173,7 +189,8 @@ body {
   .animate-breathe-ring,
   .animate-float,
   .animate-gradient,
-  .animate-shimmer {
+  .animate-shimmer,
+  .animate-answer-options > * {
     animation: none;
   }
 }
@@ -399,4 +416,3 @@ body {
     color: #9CA3AF !important;
   }
 }
-
